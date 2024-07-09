@@ -4,9 +4,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:LMFOOLS.Views"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-        Width="800" Height="450"
-        MinWidth="875" MinHeight="450"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="550"
+        Width="800" Height="550"
+        MinWidth="875" MinHeight="550"
         x:Class="LMFOOLS.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
@@ -21,7 +21,7 @@
         
         <TextBox Name="LicenseFileLocationTextBox"
                  HorizontalAlignment="Left"
-                 Margin="36,97,0,0"
+                 Margin="36,95,0,0"
                  VerticalAlignment="Top"
                  Width="330"
                  Background="#FF464646"
@@ -60,7 +60,7 @@
                    Foreground="White"/>
         <TextBox Name="LmgrdLocationTextBox"
                  HorizontalAlignment="Left"
-                 Margin="36,160,0,0"
+                 Margin="36,158,0,0"
                  VerticalAlignment="Top"
                  Width="330"
                  Background="#FF464646"
@@ -90,12 +90,6 @@
                 </Style>
             </Button.Styles>
         </Button>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,217,36,36">
-            <TextBlock Name="OutputTextBlock"
-                       TextWrapping="Wrap"
-                       Text="lmgrd's status will appear here."
-                       Foreground="White"/>
-        </ScrollViewer>
         <TextBlock Name="LmgrdLocationLabel"
                    Text="lmgrd file path"
                    HorizontalAlignment="Left"
@@ -103,6 +97,44 @@
                    VerticalAlignment="Top"
                    Width="123"
                    Foreground="White"/>
+        <TextBox Name="LmutilLocationTextBox"
+                 HorizontalAlignment="Left"
+                 Margin="36,221,0,0"
+                 VerticalAlignment="Top"
+                 Width="330"
+                 Background="#FF464646"
+                 Foreground="White"
+                 Watermark="Browse or enter lmutil's file path"
+                 TextChanged="LmutilLocationTextBox_TextChanged"/>
+        <Button Name="LmutilBrowseButton"
+                Content="Browse"
+                HorizontalAlignment="Left"
+                Margin="400,221,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="LmutilBrowseButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,277,36,36">
+            <TextBlock Name="OutputTextBlock"
+                       TextWrapping="Wrap"
+                       Text="lmgrd's status will appear here."
+                       Foreground="White"/>
+        </ScrollViewer>
         <Button Name="CheckForUpdateButton"
                 Content="Check for update"
                 HorizontalAlignment="Left"
