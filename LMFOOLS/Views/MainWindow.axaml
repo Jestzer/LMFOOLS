@@ -51,12 +51,106 @@
                 </Style>
             </Button.Styles>
         </Button>
+        <TextBlock Name="LicenseFileLocationLabel"
+                   Text="License file path"
+                   HorizontalAlignment="Left"
+                   Margin="36,76,0,0"
+                   VerticalAlignment="Top"
+                   Width="123"
+                   Foreground="White"/>
+        <TextBox Name="LmgrdLocationTextBox"
+                 HorizontalAlignment="Left"
+                 Margin="36,160,0,0"
+                 VerticalAlignment="Top"
+                 Width="330"
+                 Background="#FF464646"
+                 Foreground="White"
+                 Watermark="Browse or enter lmgrd's file path"
+                 TextChanged="LmgrdLocationTextBox_TextChanged"/>
+        <Button Name="LmgrdBrowseButton"
+                Content="Browse"
+                HorizontalAlignment="Left"
+                Margin="400,158,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="LmgrdBrowseButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,217,36,36">
             <TextBlock Name="OutputTextBlock"
                        TextWrapping="Wrap"
                        Text="lmgrd's status will appear here."
                        Foreground="White"/>
         </ScrollViewer>
+        <TextBlock Name="LmgrdLocationLabel"
+                   Text="lmgrd file path"
+                   HorizontalAlignment="Left"
+                   Margin="36,139,0,0"
+                   VerticalAlignment="Top"
+                   Width="123"
+                   Foreground="White"/>
+        <Button Name="CheckForUpdateButton"
+                Content="Check for update"
+                HorizontalAlignment="Left"
+                Margin="80,0,0,5"
+                VerticalAlignment="Bottom"
+                Width="135"
+                Foreground="White"
+                Click="CheckForUpdateButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
+        <Button Name="StopButton"
+                Content="Stop"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                HorizontalAlignment="Left"
+                Margin="550,158,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="StopButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
         <TextBlock Name="VLabel"
                    Text="v"
                    HorizontalAlignment="Left"
