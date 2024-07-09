@@ -8,6 +8,7 @@
         Width="800" Height="450"
         MinWidth="875" MinHeight="450"
         x:Class="LMFOOLS.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="LMFOOLS"
         Background="#FF2D2B2B"
@@ -27,5 +28,51 @@
                  Foreground="White"
                  Watermark="Browse or enter your license file path"
                  TextChanged="LicenseFileLocationTextBox_TextChanged"/>
+        <Button Name="LicenseFileBrowseButton"
+                Content="Browse"
+                HorizontalAlignment="Left"
+                Margin="400,95,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="LicenseFileBrowseButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,217,36,36">
+            <TextBlock Name="OutputTextBlock"
+                       TextWrapping="Wrap"
+                       Text="lmgrd's status will appear here."
+                       Foreground="White"/>
+        </ScrollViewer>
+        <TextBlock Name="VLabel"
+                   Text="v"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Bottom"
+                   Width="17"
+                   Foreground="White"
+                   Height="27"
+                   Margin="10,0,0,0"/>
+
+        <TextBlock Name="VersionLabel"
+                   Text="{Binding PackageVersion}"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Bottom"
+                   Width="54"
+                   Foreground="White"
+                   Height="27"
+                   Margin="19,0,0,0"/>
     </Grid>
 </Window>
