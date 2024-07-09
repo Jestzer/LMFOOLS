@@ -8,4 +8,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
     }
+
+    private void LicenseFileLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        
+    }
 }
