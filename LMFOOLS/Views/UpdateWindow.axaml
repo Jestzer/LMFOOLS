@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="LMFOOLS.Views.UpdateWindow"
+        Title="Check for Updates"
+        Width="450" Height="250"
+        MinWidth="450" MinHeight="250"
+        CanResize="False"
+        Background="#FF2D2B2B"
+        WindowStartupLocation="CenterOwner">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Name="UpdateTextBlock"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,50"
+                   VerticalAlignment="Center"
+                   TextAlignment="Center"
+                   Background="#FF2D2B2B"
+                   Foreground="White"
+                   Text="Please wait while checking for updates."
+                   MaxWidth="430"
+                   TextWrapping="Wrap"/>
+        <Button Name="DownloadButton"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Margin="0,180,0,0"
+                Click="DownloadButton_Click"
+                Height="50"
+                Width="150"
+                IsEnabled="False">
+            <Button.Content>
+                <TextBlock Name="DownloadButtonTextBlock"
+                           Text="Please wait"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="White"/>
+            </Button.Content>
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+                <Style Selector="Button:disabled /template/ Button">
+                    <Setter Property="Background" Value="#FF858585"/>
+                    <Setter Property="BorderBrush" Value="#FF858585"/>
+                    <Setter Property="TextElement.Foreground" Value="#FFA5A5A5"/>
+                </Style>
+            </Button.Styles>
+        </Button>
+    </Grid>
+</Window>

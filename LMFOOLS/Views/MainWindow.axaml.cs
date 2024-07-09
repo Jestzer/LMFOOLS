@@ -1,5 +1,7 @@
+using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -15,21 +17,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new MainViewModel(); // For printing the version number.
-    }
-
-    public static string PackageVersion
-    {
-        get
-        {
-            var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-            var version = assembly.GetName().Version;
-            if (version != null)
-            {
-                return version.ToString();
-            }
-
-            return "Error getting version number.";
-        }
+        
+        var settings = LoadSettings();
+        LicenseFileLocationTextBox.Text = settings.LicenseFilePathSetting;
+        LmgrdLocationTextBox.Text = settings.LmgrdPathSetting;
+        
+        Closing += MainWindow_Closing;
     }
 
     private void LicenseFileLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -37,9 +30,48 @@ public partial class MainWindow : Window
         
     }
 
-    private void OptionsFileLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void LmgrdLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        
+    }
+    
+    private static void SaveSettings(Settings settings)
+    {
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        string jsonString = JsonSerializer.Serialize(settings, options);
+        File.WriteAllText("settings.json", jsonString);
+    }
+    
+    private static Settings LoadSettings()
+    {
+        if (!File.Exists("settings.json"))
+        {
+            return new Settings(); // Return default settings if file not found.
+        }
+        string jsonString = File.ReadAllText("settings.json");
+        return JsonSerializer.Deserialize<Settings>(jsonString) ?? new Settings();
+    }
+    
+    private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        try
+        {
+            var settings = LoadSettings();
+            if (LicenseFileLocationTextBox.Text != null)
+            {
+                settings.LicenseFilePathSetting = LicenseFileLocationTextBox.Text;
+            }
+
+            if (LmgrdLocationTextBox.Text != null)
+            {
+                settings.LmgrdPathSetting = LmgrdLocationTextBox.Text;
+            }
+
+            SaveSettings(settings);
+        }
+        catch (Exception ex)
+        {
+            ShowErrorWindow("There was error when attempting to save your settings: " + ex.Message);
+        }
     }
 
     private async void ShowErrorWindow(string errorMessage)
@@ -59,10 +91,16 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void CheckForUpdateButton_Click(object sender, RoutedEventArgs e)
+    {
+        var updateWindow = new UpdateWindow();
+
+        await updateWindow.ShowDialog(this); // Putting this here, otherwise it won't center it on the MainWindow. Sorryyyyy.
+    }
+
     private async void LicenseFileBrowseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop &&
-            desktop.MainWindow != null)
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
         {
             var mainWindow = desktop.MainWindow;
 
@@ -79,70 +117,142 @@ public partial class MainWindow : Window
 
             // Open the file dialog and await for the user's response.
             var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
-
-            var selectedFile = result[0];
-
-            // Read the file contents.
-            string fileContents;
-            using (var stream = await selectedFile.OpenReadAsync())
-            using (var reader = new StreamReader(stream))
+            if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
             {
-                fileContents = await reader.ReadToEndAsync();
+                var selectedFile = result[0];
+                if (selectedFile != null)
+                {
+                    // Read the file contents.
+                    string fileContents;
+                    using (var stream = await selectedFile.OpenReadAsync())
+                    using (var reader = new StreamReader(stream))
+                    {
+                        fileContents = await reader.ReadToEndAsync();
+                    }
+
+                    // Check the file size indirectly via its content length.
+                    long fileSizeInBytes = fileContents.Length;
+                    const long fiftyMegabytes = 50L * 1024L * 1024L;
+
+                    if (fileSizeInBytes > fiftyMegabytes)
+                    {
+                        ShowErrorWindow(
+                            "There is an issue with the license file: it is over 50 MB and therefore, likely (hopefully) not a license file.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    if (!fileContents.Contains("INCREMENT"))
+                    {
+                        ShowErrorWindow(
+                            "There is an issue with the license file: it is either not a license file or it is corrupted.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    if (fileContents.Contains("lo=IN") || fileContents.Contains("lo=DC") || fileContents.Contains("lo=CIN"))
+                    {
+                        ShowErrorWindow(
+                            "There is an issue with the license file: it contains an Individual or Designated Computer license, " +
+                            "which cannot use an options file.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    if (fileContents.Contains("CONTRACT_ID="))
+                    {
+                        ShowErrorWindow(
+                            "There is an issue with the license file: it contains at least 1 non-MathWorks product.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    if (!fileContents.Contains("SERVER") || !fileContents.Contains("DAEMON"))
+                    {
+                        ShowErrorWindow(
+                            "There is an issue with the license file: it is missing the SERVER and/or DAEMON line.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    // Gotta convert some things, ya know?
+                    var rawFilePath = selectedFile.TryGetLocalPath;
+                    string? filePath = rawFilePath();
+                    LicenseFileLocationTextBox.Text = filePath;
+                }
             }
-
-            // Check the file size indirectly via its content length.
-            long fileSizeInBytes = fileContents.Length;
-            const long fiftyMegabytes = 50L * 1024L * 1024L;
-
-            if (fileSizeInBytes > fiftyMegabytes)
-            {
-                ShowErrorWindow(
-                    "There is an issue with the license file: it is over 50 MB and therefore, likely (hopefully) not a license file.");
-                LicenseFileLocationTextBox.Text = string.Empty;
-                return;
-            }
-
-            if (!fileContents.Contains("INCREMENT"))
-            {
-                ShowErrorWindow(
-                    "There is an issue with the license file: it is either not a license file or it is corrupted.");
-                LicenseFileLocationTextBox.Text = string.Empty;
-                return;
-            }
-
-            if (fileContents.Contains("lo=IN") || fileContents.Contains("lo=DC") || fileContents.Contains("lo=CIN"))
-            {
-                ShowErrorWindow(
-                    "There is an issue with the license file: it contains an Individual or Designated Computer license, " +
-                    "which cannot use an options file.");
-                LicenseFileLocationTextBox.Text = string.Empty;
-                return;
-            }
-
-            if (fileContents.Contains("CONTRACT_ID="))
-            {
-                ShowErrorWindow(
-                    "There is an issue with the license file: it contains at least 1 non-MathWorks product.");
-                LicenseFileLocationTextBox.Text = string.Empty;
-                return;
-            }
-
-            if (!fileContents.Contains("SERVER") || !fileContents.Contains("DAEMON"))
-            {
-                ShowErrorWindow(
-                    "There is an issue with the license file: it is missing the SERVER and/or DAEMON line.");
-                LicenseFileLocationTextBox.Text = string.Empty;
-                return;
-            }
-
-            // Gotta convert some things, ya know?
-            var rawFilePath = selectedFile.TryGetLocalPath;
-            string? filePath = rawFilePath();
-            LicenseFileLocationTextBox.Text = filePath;
         }
         else
         {
             ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
         }
+    }
+
+    private async void LmgrdBrowseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
+        {
+            var mainWindow = desktop.MainWindow;
+
+            var filePickerOptions = new FilePickerOpenOptions
+            {
+                Title = "Select an options file",
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new FilePickerFileType("lmgrd executable") { Patterns = ["lmgrd.exe", "lmgrd"] },
+                    new FilePickerFileType("All Files") { Patterns = ["*"] }
+                ]
+            };
+
+            // Open the file dialog.
+            var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
+
+            if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
+            {
+                var selectedFile = result[0];
+                if (selectedFile != null)
+                {
+                    // Read the file contents.
+                    string fileContents;
+                    using (var stream = await selectedFile.OpenReadAsync())
+                    using (var reader = new StreamReader(stream))
+                    {
+                        fileContents = await reader.ReadToEndAsync();
+                    }
+
+                    // Check the file size indirectly via its content length.
+                    long fileSizeInBytes = fileContents.Length;
+                    const long twoMegabytes = 2L * 1024L * 1024L;
+
+                    if (fileSizeInBytes > twoMegabytes)
+                    {
+                        ShowErrorWindow("The selected file is over 2 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
+                        LmgrdLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(fileContents))
+                    {
+                        ShowErrorWindow("There is an issue with lmgrd: it is either empty or is read-only.");
+                        LmgrdLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    // Gotta convert some things, ya know?
+                    var rawFilePath = selectedFile.TryGetLocalPath;
+                    string? filePath = rawFilePath();
+                    LmgrdLocationTextBox.Text = filePath;
+                }
+            }
+        }
+        else
+        {
+            ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+        }
+    }
+
+    private void StopButton_Click(object sender, RoutedEventArgs e)
+    {
     }
 }
