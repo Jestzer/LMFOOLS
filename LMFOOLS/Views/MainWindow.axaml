@@ -5,8 +5,27 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:LMFOOLS.Views"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        Width="800" Height="450"
+        MinWidth="875" MinHeight="450"
         x:Class="LMFOOLS.Views.MainWindow"
         Icon="/Assets/avalonia-logo.ico"
-        Title="LMFOOLS">
-        <views:MainView />
+        Title="LMFOOLS"
+        Background="#FF2D2B2B"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        
+        <TextBox Name="LicenseFileLocationTextBox"
+                 HorizontalAlignment="Left"
+                 Margin="36,97,0,0"
+                 VerticalAlignment="Top"
+                 Width="330"
+                 Background="#FF464646"
+                 Foreground="White"
+                 Watermark="Browse or enter your license file path"
+                 TextChanged="LicenseFileLocationTextBox_TextChanged"/>
+    </Grid>
 </Window>
