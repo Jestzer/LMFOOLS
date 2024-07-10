@@ -67,6 +67,13 @@
                  Foreground="White"
                  Watermark="Browse or enter lmgrd's file path"
                  TextChanged="LmgrdLocationTextBox_TextChanged"/>
+        <TextBlock Name="LmgrdLocationLabel"
+                   Text="lmgrd file path"
+                   HorizontalAlignment="Left"
+                   Margin="36,139,0,0"
+                   VerticalAlignment="Top"
+                   Width="123"
+                   Foreground="White"/>
         <Button Name="LmgrdBrowseButton"
                 Content="Browse"
                 HorizontalAlignment="Left"
@@ -90,10 +97,10 @@
                 </Style>
             </Button.Styles>
         </Button>
-        <TextBlock Name="LmgrdLocationLabel"
-                   Text="lmgrd file path"
+        <TextBlock Name="LmutilLocationLabel"
+                   Text="lmutil file path"
                    HorizontalAlignment="Left"
-                   Margin="36,139,0,0"
+                   Margin="36,202,0,0"
                    VerticalAlignment="Top"
                    Width="123"
                    Foreground="White"/>
@@ -158,6 +165,31 @@
                 </Style>
             </Button.Styles>
         </Button>
+        <Button Name="StartButton"
+                Content="Start"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                HorizontalAlignment="Left"
+                Margin="550,110,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="StartButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
         <Button Name="StopButton"
                 Content="Stop"
                 HorizontalContentAlignment="Center"
@@ -168,6 +200,31 @@
                 Width="70"
                 Foreground="White"
                 Click="StopButton_Click">
+            <Button.Styles>
+                <Style Selector="Button">
+                    <Setter Property="Background" Value="#FF464646"/>
+                    <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                    <Setter Property="TextElement.Foreground" Value="White"/>
+                </Style>
+                <Style Selector="Button:pointerover /template/ Button">
+                    <Setter Property="Background" Value="Gray"/>
+                </Style>
+                <Style Selector="Button:pressed /template/ Button">
+                    <Setter Property="Background" Value="#FFCECECE"/>
+                </Style>
+            </Button.Styles>
+        </Button>
+        <Button Name="StatusButton"
+                Content="Status"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                HorizontalAlignment="Left"
+                Margin="550,206,0,0"
+                VerticalAlignment="Top"
+                Width="70"
+                Foreground="White"
+                Click="StatusButton_Click">
             <Button.Styles>
                 <Style Selector="Button">
                     <Setter Property="Background" Value="#FF464646"/>
