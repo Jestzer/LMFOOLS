@@ -474,6 +474,8 @@ public partial class MainWindow : Window
         }
     }
     
+    private string currentDirectory = Environment.CurrentDirectory;
+    
     private void StartButton_Click(object sender, RoutedEventArgs e)
     {
         // Setup file paths to executables.
@@ -481,7 +483,6 @@ public partial class MainWindow : Window
         {
             string lmgrdPath = LmgrdLocationTextBox.Text;
             string licenseFilePath = LicenseFileLocationTextBox.Text;
-            string currentDirectory = Environment.CurrentDirectory;
 
             if (!File.Exists(lmgrdPath))
             {
@@ -539,13 +540,23 @@ public partial class MainWindow : Window
         FlexLmCanStop();
     }
     
-    private void StatusButton_Click(object sender, RoutedEventArgs e)
+    private async void StatusButton_Click(object sender, RoutedEventArgs e)
     {
         // Setup file paths to executables.
         if (!string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
         {
             string lmutilPath = LmutilLocationTextBox.Text;
             string licenseFilePath = LicenseFileLocationTextBox.Text;
+            string lmLogPath;
+            
+            if (_platform == OSPlatform.Windows)
+            {
+                lmLogPath = currentDirectory + "\\lmlog.txt";
+            }
+            else
+            {
+                lmLogPath = currentDirectory + "/lmlog.txt";
+            }
 
             if (!File.Exists(lmutilPath))
             {
@@ -595,7 +606,28 @@ public partial class MainWindow : Window
                         // # Add some code to parse the output to confirm it's down.
                         if (output.Contains("lmgrd is not running: Cannot connect to license server system. (-15,570:115 \"Operation now in progress\")\n"))
                         {
-                            OutputTextBlock.Text = "FlexLM is down.";
+                            // Find out why FlexLM is down.
+                            // Read the file contents.
+                            string fileContents;
+                            using (var stream = File.OpenRead(lmLogPath))
+                            using (var reader = new StreamReader(stream))
+                            {
+                                fileContents = await reader.ReadToEndAsync();
+                            }
+                            
+                            var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+                            
+                            if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
+                            {
+                                OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
+                                                       "something else.";
+                            }
+                            else
+                            {
+                                OutputTextBlock.Text = "FlexLM is down.";
+                            }
+                            
                             FlexLmCanStart();
                         }
                         else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
