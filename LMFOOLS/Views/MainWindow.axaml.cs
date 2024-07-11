@@ -121,7 +121,7 @@ public partial class MainWindow : Window
 
     private async void ShowErrorWindow(string errorMessage)
     {
-        OutputTextBlock.Text = string.Empty;
+        OutputTextBlock.Text = errorMessage;
         ErrorWindow errorWindow = new();
         errorWindow.ErrorTextBlock.Text = errorMessage;
 
@@ -223,12 +223,15 @@ public partial class MainWindow : Window
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
 
-                    if (filePath.Contains("/run/user/1000/doc/"))
+                    if (filePath != null)
                     {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
+                        if (filePath.Contains("/run/user/1000/doc/"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with the license file: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
                     }
                     
                     LicenseFileLocationTextBox.Text = filePath;
@@ -295,13 +298,16 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
-                    
-                    if (filePath.Contains("/run/user/1000/doc/"))
+
+                    if (filePath != null)
                     {
-                        ShowErrorWindow(
-                            "There is an issue with lmgrd: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                        LmgrdLocationTextBox.Text = string.Empty;
-                        return;
+                        if (filePath.Contains("/run/user/1000/doc/"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with lmgrd: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
+                            LmgrdLocationTextBox.Text = string.Empty;
+                            return;
+                        }
                     }
                     
                     LmgrdLocationTextBox.Text = filePath;
@@ -368,13 +374,16 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
-                    
-                    if (filePath.Contains("/run/user/1000/doc/"))
+
+                    if (filePath != null)
                     {
-                        ShowErrorWindow(
-                            "There is an issue with lmutil: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                        LmutilLocationTextBox.Text = string.Empty;
-                        return;
+                        if (filePath.Contains("/run/user/1000/doc/"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with lmutil: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
+                            LmutilLocationTextBox.Text = string.Empty;
+                            return;
+                        }
                     }
                     
                     LmutilLocationTextBox.Text = filePath;
@@ -398,9 +407,18 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = true;
         StartButton.IsEnabled = false;
     }
+
+    private void FlexLmStatusUnknown()
+    {
+        OutputTextBlock.Text = "Status unknown.";
+        StartButton.IsEnabled = true;
+        StopButton.IsEnabled = true;
+    }
     
     private void StopButton_Click(object sender, RoutedEventArgs e)
     {
+        OutputTextBlock.Text = "Loading. Please wait.";
+
         // Setup file paths to executables.
         if (!string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
         {
@@ -435,38 +453,36 @@ public partial class MainWindow : Window
                     CreateNoWindow = true
                 };
 
-                using (Process process = new Process { StartInfo = startInfo })
+                using Process process = new Process { StartInfo = startInfo };
+                process.Start();
+
+                // Read the output and error streams for debugging.
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+
+                process.WaitForExit();
+
+                // Check the exit code to determine if the command succeeded.
+                if (process.ExitCode == 0)
                 {
-                    process.Start();
-
-                    // Read the output and error streams for debugging.
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-
-                    process.WaitForExit();
-
-                    // Check the exit code to determine if the command succeeded.
-                    if (process.ExitCode == 0)
-                    {
-                        // The command ran, but that doesn't mean FlexLM actually stopped.
-                        Console.WriteLine("Command executed successfully.");
-                        Console.WriteLine(output);
-                        
-                        // # Add some code to parse the output to confirm it's down.
-                        FlexLmCanStart();
-                    }
-                    else
-                    {
-                        // Command absolutely failed.
-                        Console.WriteLine("Command failed to execute.");
-                        Console.WriteLine(error);
-                    }
+                    // The command ran, but that doesn't mean FlexLM actually stopped.
+                    Console.WriteLine("Command executed successfully.");
+                    Console.WriteLine(output);
+                }
+                else
+                {
+                    // Command absolutely failed.
+                    Console.WriteLine("Command failed to execute.");
+                    Console.WriteLine(error);
                 }
             }
             catch (Exception ex)
             {
                 ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
             }
+
+            CheckStatus();
+
         }
         else
         {
@@ -474,10 +490,12 @@ public partial class MainWindow : Window
         }
     }
     
-    private string currentDirectory = Environment.CurrentDirectory;
+    private readonly string currentDirectory = Environment.CurrentDirectory;
     
     private void StartButton_Click(object sender, RoutedEventArgs e)
     {
+        OutputTextBlock.Text = "Loading. Please wait.";
+
         // Setup file paths to executables.
         if (!string.IsNullOrWhiteSpace(LmgrdLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
         {
@@ -497,7 +515,7 @@ public partial class MainWindow : Window
             }
 
             string arguments;
-            ;
+            
             // Arguments for lmgrd.
             if (_platform == OSPlatform.Windows)
             {
@@ -521,7 +539,7 @@ public partial class MainWindow : Window
                     CreateNoWindow = true
                 };
 
-                Process process = new Process { StartInfo = startInfo };
+                Process process = new() { StartInfo = startInfo };
                 {
                     process.Start();
                 }
@@ -530,25 +548,30 @@ public partial class MainWindow : Window
             {
                 ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}");
             }
+
+            CheckStatus();
         }
         else
         {
             ShowErrorWindow("You either left your license path or lmgrd path empty.");
-        }
-        
-        // # Add some code to parse the output to confirm it's up.
-        FlexLmCanStop();
+        }        
     }
     
-    private async void StatusButton_Click(object sender, RoutedEventArgs e)
+    private void StatusButton_Click(object sender, RoutedEventArgs e)
     {
+        CheckStatus();
+    }
+    private async void CheckStatus()
+    {
+        OutputTextBlock.Text = "Loading. Please wait.";
+
         // Setup file paths to executables.
         if (!string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
         {
             string lmutilPath = LmutilLocationTextBox.Text;
             string licenseFilePath = LicenseFileLocationTextBox.Text;
             string lmLogPath;
-            
+
             if (_platform == OSPlatform.Windows)
             {
                 lmLogPath = currentDirectory + "\\lmlog.txt";
@@ -586,62 +609,62 @@ public partial class MainWindow : Window
                     CreateNoWindow = true
                 };
 
-                using (Process process = new Process { StartInfo = startInfo })
+                using Process process = new() { StartInfo = startInfo };
+                process.Start();
+
+                // Read the output and error streams for debugging.
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+
+                process.WaitForExit();
+
+                // Check the exit code to determine if the command succeeded.
+                if (process.ExitCode == 0)
                 {
-                    process.Start();
+                    // The command ran, but that doesn't mean FlexLM actually stopped.
+                    Console.WriteLine("Command executed successfully.");
+                    Console.WriteLine(output);
 
-                    // Read the output and error streams for debugging.
-                    string output = process.StandardOutput.ReadToEnd();
-                    string error = process.StandardError.ReadToEnd();
-
-                    process.WaitForExit();
-
-                    // Check the exit code to determine if the command succeeded.
-                    if (process.ExitCode == 0)
+                    if (output.Contains("lmgrd is not running"))
                     {
-                        // The command ran, but that doesn't mean FlexLM actually stopped.
-                        Console.WriteLine("Command executed successfully.");
-                        Console.WriteLine(output);
-                        
-                        // # Add some code to parse the output to confirm it's down.
-                        if (output.Contains("lmgrd is not running: Cannot connect to license server system. (-15,570:115 \"Operation now in progress\")\n"))
+                        // Find out why FlexLM is down.
+                        string fileContents;
+                        using (var stream = File.OpenRead(lmLogPath))
+                        using (var reader = new StreamReader(stream))
                         {
-                            // Find out why FlexLM is down.
-                            // Read the file contents.
-                            string fileContents;
-                            using (var stream = File.OpenRead(lmLogPath))
-                            using (var reader = new StreamReader(stream))
-                            {
-                                fileContents = await reader.ReadToEndAsync();
-                            }
-                            
-                            var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                            var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
-                            
-                            if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
-                            {
-                                OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                       "something else.";
-                            }
-                            else
-                            {
-                                OutputTextBlock.Text = "FlexLM is down.";
-                            }
-                            
-                            FlexLmCanStart();
+                            fileContents = await reader.ReadToEndAsync();
                         }
-                        else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
+
+                        var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+
+                        if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                         {
-                            OutputTextBlock.Text = "FlexLM is up!";
-                            FlexLmCanStop();
+                            OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
+                                                   "something else.";
                         }
+                        else
+                        {
+                            OutputTextBlock.Text = "FlexLM is down.";
+                        }
+
+                        FlexLmCanStart();
+                    }
+                    else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
+                    {
+                        OutputTextBlock.Text = "FlexLM is up!";
+                        FlexLmCanStop();
                     }
                     else
                     {
-                        // Command absolutely failed.
-                        Console.WriteLine("Command failed to execute.");
-                        Console.WriteLine(error);
+                        FlexLmStatusUnknown();
                     }
+                }
+                else
+                {
+                    // Command absolutely failed.
+                    Console.WriteLine("Command failed to execute.");
+                    Console.WriteLine(error);
                 }
             }
             catch (Exception ex)
