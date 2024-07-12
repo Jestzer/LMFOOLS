@@ -405,19 +405,37 @@ public partial class MainWindow : Window
     {
         StopButton.IsEnabled = false;
         StartButton.IsEnabled = true;
+        StatusButton.IsEnabled = true;
     }
 
     private void FlexLmCanStop()
     {
-        StopButton.IsEnabled = true;
-        StartButton.IsEnabled = false;
+        Dispatcher.UIThread.Post(() =>
+        {
+            StopButton.IsEnabled = true;
+            StartButton.IsEnabled = false;
+            StatusButton.IsEnabled = true;
+        });
     }
 
     private void FlexLmStatusUnknown()
     {
-        OutputTextBlock.Text = "Status unknown.";
-        StartButton.IsEnabled = true;
-        StopButton.IsEnabled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            StartButton.IsEnabled = true;
+            StopButton.IsEnabled = true;
+            StatusButton.IsEnabled = true;
+        });
+    }
+
+    private void BusyWithFlexLm()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            StartButton.IsEnabled = false;
+            StopButton.IsEnabled = false;
+            StatusButton.IsEnabled = false;
+        });
     }
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
@@ -428,6 +446,8 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
+            BusyWithFlexLm();
+
             OutputTextBlock.Text = "Loading. Please wait.";
 
             // Ensure the UI updates before actually doing anything.
@@ -498,6 +518,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}"));
+            FlexLmStatusUnknown();
         }
 
         Dispatcher.UIThread.Post(CheckStatus);
@@ -512,6 +533,7 @@ public partial class MainWindow : Window
 
         if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
+            BusyWithFlexLm();
             OutputTextBlock.Text = "Loading. Please wait.";
 
             // Same deal as the Stop button.
@@ -566,7 +588,7 @@ public partial class MainWindow : Window
                 CreateNoWindow = true
             };
 
-            using Process process = new Process { StartInfo = startInfo };
+            using Process process = new() { StartInfo = startInfo };
             process.Start();
         }
         catch (Exception ex)
@@ -586,19 +608,18 @@ public partial class MainWindow : Window
 
     private async void CheckStatus()
     {
-        // Update the UI to show the loading message
         OutputTextBlock.Text = "Loading. Please wait.";
 
-        // Ensure the UI updates before starting the long-running task
-        await Task.Delay(100); // Small delay to ensure the UI updates
+        await Task.Delay(100);
 
-        // Capture the values of the UI elements
-        string? lmutilPath = LmgrdLocationTextBox.Text;
+        string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
         string lmLogPath;
-        // Setup file paths to executables.
+
         if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
+            BusyWithFlexLm();
+
             if (_platform == OSPlatform.Windows)
             {
                 lmLogPath = _currentDirectory + "\\lmlog.txt";
@@ -665,31 +686,40 @@ public partial class MainWindow : Window
 
                 if (output.Contains("lmgrd is not running"))
                 {
-                    // Find out why FlexLM is down.
-                    string fileContents;
-                    using (var stream = File.OpenRead(lmLogPath))
-                    using (var reader = new StreamReader(stream))
+                    if (File.Exists(lmLogPath))
                     {
-                        fileContents = await reader.ReadToEndAsync();
+                        // Find out why FlexLM is down.
+                        string fileContents;
+                        using (var stream = File.OpenRead(lmLogPath))
+                        using (var reader = new StreamReader(stream))
+                        {
+                            fileContents = await reader.ReadToEndAsync();
+                        }
+
+                        var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
+                                                       "something else.";
+                                });
+                            }
+                            else
+                            {
+                                Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down."; });
+                            }
+                        });
                     }
-
-                    var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
-
-                    Dispatcher.UIThread.Post(() =>
+                    else
                     {
-                        if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
-                        {
-                            OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                   "something else.";
-                        }
-                        else
-                        {
-                            OutputTextBlock.Text = "FlexLM is down.";
-                        }
-
-                        FlexLmCanStart();
-                    });
+                        Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down."; });
+                    }
+                    Dispatcher.UIThread.Post(FlexLmCanStart);
                 }
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
                 {
@@ -714,6 +744,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}"));
+            FlexLmStatusUnknown();
         }
     }
 }
