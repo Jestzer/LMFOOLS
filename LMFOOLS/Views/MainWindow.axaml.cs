@@ -425,6 +425,7 @@ public partial class MainWindow : Window
             StartButton.IsEnabled = true;
             StopButton.IsEnabled = true;
             StatusButton.IsEnabled = true;
+            OutputTextBlock.Text = "Status unknown";
         });
     }
 
@@ -528,7 +529,7 @@ public partial class MainWindow : Window
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
-        string? lmgrdPath = LmutilLocationTextBox.Text;
+        string? lmgrdPath = LmgrdLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
 
         if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
@@ -590,6 +591,19 @@ public partial class MainWindow : Window
 
             using Process process = new() { StartInfo = startInfo };
             process.Start();
+            
+            // Read the output and error streams for debugging.
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            
+            if (process.ExitCode == 0)
+            {
+                Console.WriteLine(output);
+            }
+            else
+            {
+                Console.WriteLine(error);
+            }
         }
         catch (Exception ex)
         {
@@ -683,7 +697,8 @@ public partial class MainWindow : Window
                 // The command ran, but that doesn't mean FlexLM actually stopped.
                 Console.WriteLine("Command executed successfully.");
                 Console.WriteLine(output);
-
+                
+                // Complete failure to launch.
                 if (output.Contains("lmgrd is not running"))
                 {
                     if (File.Exists(lmLogPath))
@@ -721,6 +736,7 @@ public partial class MainWindow : Window
                     }
                     Dispatcher.UIThread.Post(FlexLmCanStart);
                 }
+                // Successfully launched.
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
                 {
                     Dispatcher.UIThread.Post(() =>
@@ -729,6 +745,28 @@ public partial class MainWindow : Window
                         FlexLmCanStop();
                     });
                 }
+                // LMGRD launched, but MLM couldn't launch. Let's see if we can find out why!
+                else if (output.Contains("license server UP (MASTER)") && !output.Contains("MLM: UP"))
+                {
+                    if (output.Contains("MLM: No socket connection to license server manager."))
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not due it being unable to use the port it attempted to use. " +
+                                                   "Please manually end the lmgrd process. Then, please manually specify a port this program is allowed to use (try 27011, for example.)";
+                            FlexLmCanStop();
+                        });
+                    }
+                    else
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please manually end the lmgrd process.";
+                            FlexLmCanStop();
+                        });
+                    }
+                }
+                // We will assume nothing if we can't definitively tell its status.
                 else
                 {
                     Dispatcher.UIThread.Post(FlexLmStatusUnknown);
