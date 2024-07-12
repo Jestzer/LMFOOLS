@@ -4,11 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using LMFOOLS.ViewModels;
 
 namespace LMFOOLS.Views;
@@ -18,37 +20,39 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        
+
         // Bar unsupported platforms.
         if (_platform == OSPlatform.FreeBSD || _platform == OSPlatform.Create("UNKNOWN"))
         {
             ShowErrorWindow("FreeBSD is not natively supported by FlexLM and therefore, neither will this program.");
             Close();
         }
-        
+
         DataContext = new MainViewModel(); // For printing the version number.
-        
+
         var settings = LoadSettings();
         LicenseFileLocationTextBox.Text = settings.LicenseFilePathSetting;
         LmgrdLocationTextBox.Text = settings.LmgrdPathSetting;
         LmutilLocationTextBox.Text = settings.LmutilPathSetting;
-        
+
         Closing += MainWindow_Closing;
     }
-    
+
     // Figure out your platform.
     readonly OSPlatform _platform = GetOperatingSystemPlatform();
-    
+
     private static OSPlatform GetOperatingSystemPlatform()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return OSPlatform.Windows;
         }
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             return OSPlatform.Linux;
         }
+
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
             return OSPlatform.OSX;
@@ -58,39 +62,40 @@ public partial class MainWindow : Window
         {
             return OSPlatform.Windows;
         }
+
         return OSPlatform.Create("UNKNOWN");
     }
-    
+
     private void LicenseFileLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        
     }
 
     private void LmgrdLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
     }
-    
+
     private void LmutilLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
     }
-    
+
     private static void SaveSettings(Settings settings)
     {
         var options = new JsonSerializerOptions { WriteIndented = true };
         string jsonString = JsonSerializer.Serialize(settings, options);
         File.WriteAllText("settings.json", jsonString);
     }
-    
+
     private static Settings LoadSettings()
     {
         if (!File.Exists("settings.json"))
         {
             return new Settings(); // Return default settings if file not found.
         }
+
         string jsonString = File.ReadAllText("settings.json");
         return JsonSerializer.Deserialize<Settings>(jsonString) ?? new Settings();
     }
-    
+
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         try
@@ -233,7 +238,7 @@ public partial class MainWindow : Window
                             return;
                         }
                     }
-                    
+
                     LicenseFileLocationTextBox.Text = filePath;
                 }
             }
@@ -309,7 +314,7 @@ public partial class MainWindow : Window
                             return;
                         }
                     }
-                    
+
                     LmgrdLocationTextBox.Text = filePath;
                 }
             }
@@ -319,7 +324,7 @@ public partial class MainWindow : Window
             ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
         }
     }
-    
+
     private async void LmutilBrowseButton_Click(object sender, RoutedEventArgs e)
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
@@ -385,7 +390,7 @@ public partial class MainWindow : Window
                             return;
                         }
                     }
-                    
+
                     LmutilLocationTextBox.Text = filePath;
                 }
             }
@@ -414,230 +419,265 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = true;
     }
-    
-    private void StopButton_Click(object sender, RoutedEventArgs e)
+
+    private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
-        OutputTextBlock.Text = "Loading. Please wait.";
-
+        string? lmutilPath = LmutilLocationTextBox.Text;
+        string? licenseFilePath = LicenseFileLocationTextBox.Text;
         // Setup file paths to executables.
-        if (!string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
+
+        if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
-            string lmutilPath = LmutilLocationTextBox.Text;
-            string licenseFilePath = LicenseFileLocationTextBox.Text;
+            OutputTextBlock.Text = "Loading. Please wait.";
 
-            if (!File.Exists(lmutilPath))
-            {
-                ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}");
-                return;
-            }
+            // Ensure the UI updates before actually doing anything.
+            await Task.Delay(100);
 
-            if (!File.Exists(licenseFilePath))
-            {
-                ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}");
-                return;
-            }
-
-            // Arguments for lmutil.
-            string arguments = $"lmdown -c \"{licenseFilePath}\" -q";
-
-            // Execute the full command!
-            try
-            {
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = lmutilPath,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using Process process = new Process { StartInfo = startInfo };
-                process.Start();
-
-                // Read the output and error streams for debugging.
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-
-                process.WaitForExit();
-
-                // Check the exit code to determine if the command succeeded.
-                if (process.ExitCode == 0)
-                {
-                    // The command ran, but that doesn't mean FlexLM actually stopped.
-                    Console.WriteLine("Command executed successfully.");
-                    Console.WriteLine(output);
-                }
-                else
-                {
-                    // Command absolutely failed.
-                    Console.WriteLine("Command failed to execute.");
-                    Console.WriteLine(error);
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
-            }
-
-            CheckStatus();
-
+            // Perform the "actual code" asynchronously to make sure the UI message displayed first.
+            await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
         }
         else
         {
             ShowErrorWindow("You either left your license path or lmutil path empty.");
         }
     }
-    
-    private readonly string currentDirectory = Environment.CurrentDirectory;
-    
-    private void StartButton_Click(object sender, RoutedEventArgs e)
+
+    private void ExecuteStopCommand(string lmutilPath, string licenseFilePath)
     {
-        OutputTextBlock.Text = "Loading. Please wait.";
-
-        // Setup file paths to executables.
-        if (!string.IsNullOrWhiteSpace(LmgrdLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
+        if (!File.Exists(lmutilPath))
         {
-            string lmgrdPath = LmgrdLocationTextBox.Text;
-            string licenseFilePath = LicenseFileLocationTextBox.Text;
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
+            return;
+        }
 
-            if (!File.Exists(lmgrdPath))
-            {
-                ShowErrorWindow($"The lmgrd executable was not found at the specified path: {lmgrdPath}");
-                return;
-            }
+        if (!File.Exists(licenseFilePath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            return;
+        }
 
-            if (!File.Exists(licenseFilePath))
-            {
-                ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}");
-                return;
-            }
+        // Arguments for lmutil.
+        string arguments = $"lmdown -c \"{licenseFilePath}\" -q";
 
-            string arguments;
-            
-            // Arguments for lmgrd.
-            if (_platform == OSPlatform.Windows)
+        // Execute the full command!
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                arguments = $"-c \"{licenseFilePath}\" -l \"{currentDirectory}\\lmlog.txt\"";
+                FileName = lmutilPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new Process { StartInfo = startInfo };
+            process.Start();
+
+            // Read the output and error streams for debugging.
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+
+            process.WaitForExit();
+
+            // Check the exit code to determine if the command succeeded.
+            if (process.ExitCode == 0)
+            {
+                // The command ran, but that doesn't mean FlexLM actually stopped.
+                Console.WriteLine("Command executed successfully.");
+                Console.WriteLine(output);
             }
             else
             {
-                arguments = $"-c \"{licenseFilePath}\" -l \"{currentDirectory}/lmlog.txt\"";
+                // Command absolutely failed.
+                Console.WriteLine("Command failed to execute.");
+                Console.WriteLine(error);
             }
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}"));
+        }
 
-            // Execute the full command!
-            try
-            {
-                ProcessStartInfo startInfo = new ProcessStartInfo
-                {
-                    FileName = lmgrdPath,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
+        Dispatcher.UIThread.Post(CheckStatus);
+    }
 
-                Process process = new() { StartInfo = startInfo };
-                {
-                    process.Start();
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}");
-            }
+    private readonly string _currentDirectory = Environment.CurrentDirectory;
 
-            CheckStatus();
+    private async void StartButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? lmgrdPath = LmutilLocationTextBox.Text;
+        string? licenseFilePath = LicenseFileLocationTextBox.Text;
+
+        if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+        {
+            OutputTextBlock.Text = "Loading. Please wait.";
+
+            // Same deal as the Stop button.
+            await Task.Delay(100);
+            await Task.Run(() => ExecuteStartCommand(lmgrdPath, licenseFilePath));
         }
         else
         {
             ShowErrorWindow("You either left your license path or lmgrd path empty.");
-        }        
+        }
     }
-    
+
+    private async void ExecuteStartCommand(string lmgrdPath, string licenseFilePath)
+    {
+        // Setup file paths to executables.
+        if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
+
+        if (!File.Exists(lmgrdPath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmgrd executable was not found at the specified path: {lmgrdPath}"));
+            return;
+        }
+
+        if (!File.Exists(licenseFilePath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            return;
+        }
+
+        string arguments;
+
+        // Arguments for lmgrd.
+        if (_platform == OSPlatform.Windows)
+        {
+            arguments = $"-c \"{licenseFilePath}\" -l \"{_currentDirectory}\\lmlog.txt\"";
+        }
+        else
+        {
+            arguments = $"-c \"{licenseFilePath}\" -l \"{_currentDirectory}/lmlog.txt\"";
+        }
+
+        // Execute the full command!
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = lmgrdPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new Process { StartInfo = startInfo };
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}"));
+        }
+
+        await Task.Delay(1000);
+
+        Dispatcher.UIThread.Post(CheckStatus);
+    }
+
     private void StatusButton_Click(object sender, RoutedEventArgs e)
     {
         CheckStatus();
     }
+
     private async void CheckStatus()
     {
+        // Update the UI to show the loading message
         OutputTextBlock.Text = "Loading. Please wait.";
 
-        // Setup file paths to executables.
-        if (!string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text))
-        {
-            string lmutilPath = LmutilLocationTextBox.Text;
-            string licenseFilePath = LicenseFileLocationTextBox.Text;
-            string lmLogPath;
+        // Ensure the UI updates before starting the long-running task
+        await Task.Delay(100); // Small delay to ensure the UI updates
 
+        // Capture the values of the UI elements
+        string? lmutilPath = LmgrdLocationTextBox.Text;
+        string? licenseFilePath = LicenseFileLocationTextBox.Text;
+        string lmLogPath;
+        // Setup file paths to executables.
+        if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+        {
             if (_platform == OSPlatform.Windows)
             {
-                lmLogPath = currentDirectory + "\\lmlog.txt";
+                lmLogPath = _currentDirectory + "\\lmlog.txt";
             }
             else
             {
-                lmLogPath = currentDirectory + "/lmlog.txt";
+                lmLogPath = _currentDirectory + "/lmlog.txt";
             }
 
-            if (!File.Exists(lmutilPath))
-            {
-                ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}");
-                return;
-            }
+            // Run the long-running code asynchronously
+            await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
+        }
+        else
+        {
+            ShowErrorWindow("You either left your license path or lmutil path empty.");
+        }
+    }
 
-            if (!File.Exists(licenseFilePath))
-            {
-                ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}");
-                return;
-            }
+    private async Task ExecuteCheckStatus(string lmutilPath, string licenseFilePath, string lmLogPath)
+    {
+        if (!File.Exists(lmutilPath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
+            return;
+        }
 
-            // Arguments for lmutil.
-            string arguments = $"lmstat -c \"{licenseFilePath}\" -a";
+        if (!File.Exists(licenseFilePath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            return;
+        }
 
-            // Execute the full command!
-            try
+        // Arguments for lmutil.
+        string arguments = $"lmstat -c \"{licenseFilePath}\" -a";
+
+        // Execute the full command!
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                ProcessStartInfo startInfo = new ProcessStartInfo
+                FileName = lmutilPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+
+            // Read the output and error streams for debugging.
+            string output = process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+
+            process.WaitForExit();
+
+            // Check the exit code to determine if the command succeeded.
+            if (process.ExitCode == 0)
+            {
+                // The command ran, but that doesn't mean FlexLM actually stopped.
+                Console.WriteLine("Command executed successfully.");
+                Console.WriteLine(output);
+
+                if (output.Contains("lmgrd is not running"))
                 {
-                    FileName = lmutilPath,
-                    Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using Process process = new() { StartInfo = startInfo };
-                process.Start();
-
-                // Read the output and error streams for debugging.
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-
-                process.WaitForExit();
-
-                // Check the exit code to determine if the command succeeded.
-                if (process.ExitCode == 0)
-                {
-                    // The command ran, but that doesn't mean FlexLM actually stopped.
-                    Console.WriteLine("Command executed successfully.");
-                    Console.WriteLine(output);
-
-                    if (output.Contains("lmgrd is not running"))
+                    // Find out why FlexLM is down.
+                    string fileContents;
+                    using (var stream = File.OpenRead(lmLogPath))
+                    using (var reader = new StreamReader(stream))
                     {
-                        // Find out why FlexLM is down.
-                        string fileContents;
-                        using (var stream = File.OpenRead(lmLogPath))
-                        using (var reader = new StreamReader(stream))
-                        {
-                            fileContents = await reader.ReadToEndAsync();
-                        }
+                        fileContents = await reader.ReadToEndAsync();
+                    }
 
-                        var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                        var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+                    var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                    var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
+                    Dispatcher.UIThread.Post(() =>
+                    {
                         if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                         {
                             OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
@@ -649,32 +689,31 @@ public partial class MainWindow : Window
                         }
 
                         FlexLmCanStart();
-                    }
-                    else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
+                    });
+                }
+                else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
+                {
+                    Dispatcher.UIThread.Post(() =>
                     {
                         OutputTextBlock.Text = "FlexLM is up!";
                         FlexLmCanStop();
-                    }
-                    else
-                    {
-                        FlexLmStatusUnknown();
-                    }
+                    });
                 }
                 else
                 {
-                    // Command absolutely failed.
-                    Console.WriteLine("Command failed to execute.");
-                    Console.WriteLine(error);
+                    Dispatcher.UIThread.Post(FlexLmStatusUnknown);
                 }
             }
-            catch (Exception ex)
+            else
             {
-                ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
+                // Command absolutely failed.
+                Console.WriteLine("Command failed to execute.");
+                Console.WriteLine(error);
             }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("You either left your license path or lmutil path empty.");
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}"));
         }
     }
 }
