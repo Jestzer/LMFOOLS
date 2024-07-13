@@ -1,6 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
+        <TrimMode>link</TrimMode>
+        <SelfContained>true</SelfContained>
+        <PublishAot>true</PublishAot>
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -12,12 +15,15 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)"/>
-        <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-        <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="$(AvaloniaVersion)"/>
+        <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+        <!--Condition
+        below is needed to remove Avalonia.Diagnostics package from build output in Release
+        configuration.-->
+        <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics"
+            Version="$(AvaloniaVersion)" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\LMFOOLS\LMFOOLS.csproj"/>
+        <ProjectReference Include="..\LMFOOLS\LMFOOLS.csproj" />
     </ItemGroup>
 </Project>
