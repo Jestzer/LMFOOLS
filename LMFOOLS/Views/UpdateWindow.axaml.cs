@@ -36,13 +36,13 @@ public partial class UpdateWindow : Window
         Version currentVersion = new(PackageVersion);
 
         // GitHub API URL for the latest release.
-        string latestReleaseUrl = "https://api.github.com/repos/Jestzer/options.file.checker/releases/latest";
+        string latestReleaseUrl = "https://api.github.com/repos/Jestzer/LMFOOLS/releases/latest";
 
         // Use HttpClient to fetch the latest release data.
         using HttpClient client = new();
 
         // GitHub API requires a user-agent. I'm adding the extra headers to reduce HTTP error 403s.
-        client.DefaultRequestHeaders.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("options.file.checker", PackageVersion));
+        client.DefaultRequestHeaders.UserAgent.Add(new System.Net.Http.Headers.ProductInfoHeaderValue("LMFOOLS", PackageVersion));
         client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
         try
@@ -109,7 +109,7 @@ public partial class UpdateWindow : Window
     {
         if (_updateIsAvailable)
         {
-            var url = "https://github.com/Jestzer/options.file.checker/releases/latest";
+            var url = "https://github.com/Jestzer/LMFOOLS/releases/latest";
 
             try
             {
