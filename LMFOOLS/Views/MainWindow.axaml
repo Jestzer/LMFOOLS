@@ -9,7 +9,7 @@
         MinWidth="875" MinHeight="550"
         x:Class="LMFOOLS.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/icon.ico"
         Title="LMFOOLS"
         Background="#FF2D2B2B"
         WindowStartupLocation="CenterScreen">
