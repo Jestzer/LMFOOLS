@@ -66,16 +66,47 @@ public partial class MainWindow : Window
         return OSPlatform.Create("UNKNOWN");
     }
 
+    private bool flexLmIsAlreadyRunning;
+
+    private void BadFlexLmStatusCheckAndButtonUpdate()
+    {
+        if (OutputTextBlock.Text != null)
+        {
+            if (OutputTextBlock.Text == "FlexLM is up!" || OutputTextBlock.Text.Contains("LMGRD was able to start"))
+            {
+                flexLmIsAlreadyRunning = true;
+            }
+            else
+            {
+                flexLmIsAlreadyRunning = false;
+            }
+        }
+        else { flexLmIsAlreadyRunning = false; }
+
+        if (LicenseFileLocationTextBox == null || LmgrdLocationTextBox == null || LmutilLocationTextBox == null) return;
+
+        bool isLicenseFileValid = File.Exists(LicenseFileLocationTextBox.Text);
+        bool isLmgrdValid = File.Exists(LmgrdLocationTextBox.Text);
+        bool isLmutilValid = File.Exists( LmutilLocationTextBox.Text);
+
+        StartButton.IsEnabled = !flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
+        StopButton.IsEnabled = flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
+        StatusButton.IsEnabled = isLicenseFileValid && isLmgrdValid && isLmutilValid;
+    }
+
     private void LicenseFileLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        BadFlexLmStatusCheckAndButtonUpdate();
     }
 
     private void LmgrdLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        BadFlexLmStatusCheckAndButtonUpdate();
     }
 
     private void LmutilLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        BadFlexLmStatusCheckAndButtonUpdate();
     }
 
     private static void SaveSettings(Settings settings)
@@ -591,11 +622,11 @@ public partial class MainWindow : Window
 
             using Process process = new() { StartInfo = startInfo };
             process.Start();
-            
+
             // Read the output and error streams for debugging.
             string output = process.StandardOutput.ReadToEnd();
             string error = process.StandardError.ReadToEnd();
-            
+
             if (process.ExitCode == 0)
             {
                 Console.WriteLine(output);
@@ -697,7 +728,7 @@ public partial class MainWindow : Window
                 // The command ran, but that doesn't mean FlexLM actually stopped.
                 Console.WriteLine("Command executed successfully.");
                 Console.WriteLine(output);
-                
+
                 // Complete failure to launch.
                 if (output.Contains("lmgrd is not running"))
                 {
