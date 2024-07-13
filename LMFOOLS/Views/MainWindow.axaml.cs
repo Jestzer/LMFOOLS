@@ -4,6 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -87,7 +90,7 @@ public partial class MainWindow : Window
 
         bool isLicenseFileValid = File.Exists(LicenseFileLocationTextBox.Text);
         bool isLmgrdValid = File.Exists(LmgrdLocationTextBox.Text);
-        bool isLmutilValid = File.Exists( LmutilLocationTextBox.Text);
+        bool isLmutilValid = File.Exists(LmutilLocationTextBox.Text);
 
         StartButton.IsEnabled = !flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
         StopButton.IsEnabled = flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
@@ -109,10 +112,16 @@ public partial class MainWindow : Window
         BadFlexLmStatusCheckAndButtonUpdate();
     }
 
+
+    [JsonSerializable(typeof(Settings))]
+    internal partial class SettingsJsonContext : JsonSerializerContext
+    {
+    }
+
     private static void SaveSettings(Settings settings)
     {
         var options = new JsonSerializerOptions { WriteIndented = true };
-        string jsonString = JsonSerializer.Serialize(settings, options);
+        string jsonString = JsonSerializer.Serialize(settings, SettingsJsonContext.Default.Settings);
         File.WriteAllText("settings.json", jsonString);
     }
 
@@ -124,7 +133,7 @@ public partial class MainWindow : Window
         }
 
         string jsonString = File.ReadAllText("settings.json");
-        return JsonSerializer.Deserialize<Settings>(jsonString) ?? new Settings();
+        return JsonSerializer.Deserialize(jsonString, SettingsJsonContext.Default.Settings) ?? new Settings();
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -432,32 +441,32 @@ public partial class MainWindow : Window
         }
     }
 
-    private void FlexLmCanStart()
+    private async void FlexLmCanStart()
     {
         StopButton.IsEnabled = false;
-        StartButton.IsEnabled = true;
         StatusButton.IsEnabled = true;
+
+        OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.";
+
+        await Task.Delay(5000); // Wait 5 seconds.
+
+        StartButton.IsEnabled = true;
     }
 
     private void FlexLmCanStop()
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            StopButton.IsEnabled = true;
-            StartButton.IsEnabled = false;
-            StatusButton.IsEnabled = true;
-        });
+        StopButton.IsEnabled = true;
+        StartButton.IsEnabled = false;
+        StatusButton.IsEnabled = true;
     }
 
     private void FlexLmStatusUnknown()
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            StartButton.IsEnabled = true;
-            StopButton.IsEnabled = true;
-            StatusButton.IsEnabled = true;
-            OutputTextBlock.Text = "Status unknown";
-        });
+        StartButton.IsEnabled = true;
+        StopButton.IsEnabled = true;
+        StatusButton.IsEnabled = true;
+        OutputTextBlock.Text = "Status unknown";
+
     }
 
     private void BusyWithFlexLm()
@@ -703,7 +712,7 @@ public partial class MainWindow : Window
         // Execute the full command!
         try
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = lmutilPath,
                 Arguments = arguments,
@@ -774,6 +783,7 @@ public partial class MainWindow : Window
                     {
                         OutputTextBlock.Text = "FlexLM is up!";
                         FlexLmCanStop();
+                        OutputLicenseUsageInfo(output);
                     });
                 }
                 // LMGRD launched, but MLM couldn't launch. Let's see if we can find out why!
@@ -783,8 +793,8 @@ public partial class MainWindow : Window
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
-                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not due it being unable to use the port it attempted to use. " +
-                                                   "Please manually end the lmgrd process. Then, please manually specify a port this program is allowed to use (try 27011, for example.)";
+                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not due it being unable to use the port it attempted to use. Please press the Stop button or " +
+                                                   "manually end the process. Then, please manually specify a port this program is allowed to use (try 27011, for example.)";
                             FlexLmCanStop();
                         });
                     }
@@ -792,7 +802,7 @@ public partial class MainWindow : Window
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
-                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please manually end the lmgrd process.";
+                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process.";
                             FlexLmCanStop();
                         });
                     }
@@ -814,6 +824,28 @@ public partial class MainWindow : Window
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}"));
             FlexLmStatusUnknown();
+        }
+    }
+
+    private void OutputLicenseUsageInfo(string output)
+    {
+        // Regex pattern used to parse needed info.
+        string pattern = @"Users of (\w+):\s+\(Total of (\d+) licenses issued;\s+Total of (\d+) licenses in use\)";
+        MatchCollection matches = Regex.Matches(output, pattern);
+
+        OutputTextBlock.Text += "\n"; // Give a bit of space.
+        // Iterate through the matches only.
+        foreach (Match match in matches)
+        {
+            if (match.Success)
+            {
+                string product = match.Groups[1].Value;
+                string totalSeats = match.Groups[2].Value;
+                string seatsInUse = match.Groups[3].Value;
+
+                string formattedText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+                OutputTextBlock.Text += formattedText;
+            }
         }
     }
 }
