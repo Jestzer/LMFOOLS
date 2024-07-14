@@ -448,10 +448,8 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = false;
         StatusButton.IsEnabled = true;
 
-        OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.";
-
+        Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.");
         await Task.Delay(5000); // Wait 5 seconds.
-
         StartButton.IsEnabled = true;
     }
 
@@ -832,8 +830,8 @@ public partial class MainWindow : Window
     private async void OutputLicenseUsageInfo(string output, string lmLogPath)
     {
         // Regex patterns used to parse needed info.
-        string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) licenses issued;\s+Total of (\d+) licenses in use\)";
-        string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) licenses, unsupported by licensed server\)";
+        string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
+        string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
         string formattedOutputText;
 
         MatchCollection usageMatches = Regex.Matches(output, usagePattern);
