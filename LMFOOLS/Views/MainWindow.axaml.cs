@@ -41,6 +41,8 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
     }
 
+    private static readonly char[] lineSeparator = ['\r', '\n'];
+
     // Figure out your platform.
     readonly OSPlatform _platform = GetOperatingSystemPlatform();
 
@@ -619,7 +621,7 @@ public partial class MainWindow : Window
         // Execute the full command!
         try
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = lmgrdPath,
                 Arguments = arguments,
@@ -751,7 +753,7 @@ public partial class MainWindow : Window
                             fileContents = await reader.ReadToEndAsync();
                         }
 
-                        var lines = fileContents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        var lines = fileContents.Split(lineSeparator, StringSplitOptions.RemoveEmptyEntries);
                         var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
                         Dispatcher.UIThread.Post(() =>
@@ -783,7 +785,7 @@ public partial class MainWindow : Window
                     {
                         OutputTextBlock.Text = "FlexLM is up!";
                         FlexLmCanStop();
-                        OutputLicenseUsageInfo(output);
+                        OutputLicenseUsageInfo(output, lmLogPath);
                     });
                 }
                 // LMGRD launched, but MLM couldn't launch. Let's see if we can find out why!
@@ -827,15 +829,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OutputLicenseUsageInfo(string output)
+    private async void OutputLicenseUsageInfo(string output, string lmLogPath)
     {
-        // Regex pattern used to parse needed info.
-        string pattern = @"Users of (\w+):\s+\(Total of (\d+) licenses issued;\s+Total of (\d+) licenses in use\)";
-        MatchCollection matches = Regex.Matches(output, pattern);
+        // Regex patterns used to parse needed info.
+        string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) licenses issued;\s+Total of (\d+) licenses in use\)";
+        string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) licenses, unsupported by licensed server\)";
+        string formattedOutputText;
+
+        MatchCollection usageMatches = Regex.Matches(output, usagePattern);
+        MatchCollection errorMatches = Regex.Matches(output, errorPattern);
 
         OutputTextBlock.Text += "\n"; // Give a bit of space.
-        // Iterate through the matches only.
-        foreach (Match match in matches)
+
+        // Iterate through the usage matches.
+        foreach (Match match in usageMatches)
         {
             if (match.Success)
             {
@@ -843,8 +850,77 @@ public partial class MainWindow : Window
                 string totalSeats = match.Groups[2].Value;
                 string seatsInUse = match.Groups[3].Value;
 
-                string formattedText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
-                OutputTextBlock.Text += formattedText;
+                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+                OutputTextBlock.Text += formattedOutputText;
+            }
+        }
+
+        // Iterate through the error matches.
+        foreach (Match match in errorMatches)
+        {
+            if (match.Success)
+            {
+                string product = match.Groups[1].Value;
+
+                if (File.Exists(lmLogPath))
+                {
+                    try
+                    {
+                        // Find out why your product is unavailable.
+                        string fileContents;
+                        using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                        using (var reader = new StreamReader(stream))
+                        {
+                            fileContents = await reader.ReadToEndAsync();
+                        }
+
+                        var lines = fileContents.Split(lineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                        bool causeWasFound = false;
+
+                        // Yes I'm counting the lines so I can jump between different ones in my if cases below.
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            var line = lines[i];
+
+                            if (line.Contains($"EXPIRED: {product}"))
+                            {
+                                formattedOutputText = $"\n{product}: is expired and cannot be used.";
+                                OutputTextBlock.Text += formattedOutputText;
+                                causeWasFound = true;
+                                break;
+                            }
+                            else if (line.Contains("Invalid license key (inconsistent authentication code)"))
+                            {
+                                if (i + 1 < lines.Length && lines[i + 1].Contains($"==>INCREMENT {product}"))
+                                {
+                                    formattedOutputText = $"\n{product}: has an invalid authentication key and needs its license file to be regenerated.";
+                                    OutputTextBlock.Text += formattedOutputText;
+                                    causeWasFound = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!causeWasFound)
+                        {
+                            formattedOutputText = $"\n{product}: an error is preventing this product from being used.";
+                            OutputTextBlock.Text += formattedOutputText;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex.Message.Contains("lmlog.txt' because it is being used by another process."))
+                        {
+                            ShowErrorWindow("Another program is using the log file. Please close that program in order to proceed.");
+                            return;
+                        }
+                        else
+                        {
+                            ShowErrorWindow("There was an error when attempting to display the server's status: " + ex.Message);
+                            return;
+                        } 
+                    }
+                }
             }
         }
     }
