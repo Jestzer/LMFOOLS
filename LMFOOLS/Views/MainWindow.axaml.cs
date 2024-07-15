@@ -458,8 +458,8 @@ public partial class MainWindow : Window
 
         if (_stopButtonWasJustUsed)
         {
-            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.");
-            await Task.Delay(5000); // Wait 5 seconds.
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 15 seconds. This is to ensure FlexLM has fully stopped.");
+            await Task.Delay(15000); // Wait 15 seconds.
         }
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
