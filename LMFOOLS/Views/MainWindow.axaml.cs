@@ -299,7 +299,7 @@ public partial class MainWindow : Window
 
             var filePickerOptions = new FilePickerOpenOptions
             {
-                Title = "Select an options file",
+                Title = "Select lmgrd",
                 AllowMultiple = false,
                 FileTypeFilter =
                 [
@@ -443,14 +443,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool _stopButtonWasJustUsed;
+
     private async void FlexLmCanStart()
     {
         StopButton.IsEnabled = false;
         StatusButton.IsEnabled = true;
 
-        Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.");
-        await Task.Delay(5000); // Wait 5 seconds.
+        if (_stopButtonWasJustUsed)
+        {
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped.");
+            await Task.Delay(5000); // Wait 5 seconds.
+        }
         StartButton.IsEnabled = true;
+        _stopButtonWasJustUsed = false;
     }
 
     private void FlexLmCanStop()
@@ -481,6 +487,7 @@ public partial class MainWindow : Window
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
+        _stopButtonWasJustUsed = true;
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
         // Setup file paths to executables.
