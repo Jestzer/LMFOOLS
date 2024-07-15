@@ -1,9 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <OutputType>WinExe</OutputType>
+        <OutputType>WinExe</OutputType>        
         <TrimMode>link</TrimMode>
         <SelfContained>true</SelfContained>
         <PublishAot>true</PublishAot>
+        <AssemblyName>LaunchLMFOOLS</AssemblyName>
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
