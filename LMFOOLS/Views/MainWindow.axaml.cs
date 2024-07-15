@@ -5,7 +5,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Avalonia;
