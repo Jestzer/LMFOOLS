@@ -36,11 +36,18 @@ public partial class MainWindow : Window
         LicenseFileLocationTextBox.Text = settings.LicenseFilePathSetting;
         LmgrdLocationTextBox.Text = settings.LmgrdPathSetting;
         LmutilLocationTextBox.Text = settings.LmutilPathSetting;
-
+        
+        // Let's open with a status check, if we can.
+        if (!string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LmgrdLocationTextBox.Text) && 
+            !string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text))
+        {
+            CheckStatus();
+        }
+        
         Closing += MainWindow_Closing;
     }
 
-    private static readonly char[] lineSeparator = ['\r', '\n'];
+    private static readonly char[] LineSeparator = ['\r', '\n'];
 
     // Figure out your platform.
     readonly OSPlatform _platform = GetOperatingSystemPlatform();
@@ -70,7 +77,7 @@ public partial class MainWindow : Window
         return OSPlatform.Create("UNKNOWN");
     }
 
-    private bool flexLmIsAlreadyRunning;
+    private bool _flexLmIsAlreadyRunning;
 
     private void BadFlexLmStatusCheckAndButtonUpdate()
     {
@@ -78,14 +85,14 @@ public partial class MainWindow : Window
         {
             if (OutputTextBlock.Text == "FlexLM is up!" || OutputTextBlock.Text.Contains("LMGRD was able to start"))
             {
-                flexLmIsAlreadyRunning = true;
+                _flexLmIsAlreadyRunning = true;
             }
             else
             {
-                flexLmIsAlreadyRunning = false;
+                _flexLmIsAlreadyRunning = false;
             }
         }
-        else { flexLmIsAlreadyRunning = false; }
+        else { _flexLmIsAlreadyRunning = false; }
 
         if (LicenseFileLocationTextBox == null || LmgrdLocationTextBox == null || LmutilLocationTextBox == null) return;
 
@@ -93,8 +100,8 @@ public partial class MainWindow : Window
         bool isLmgrdValid = File.Exists(LmgrdLocationTextBox.Text);
         bool isLmutilValid = File.Exists(LmutilLocationTextBox.Text);
 
-        StartButton.IsEnabled = !flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
-        StopButton.IsEnabled = flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
+        StartButton.IsEnabled = !_flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
+        StopButton.IsEnabled = _flexLmIsAlreadyRunning && isLicenseFileValid && isLmgrdValid && isLmutilValid;
         StatusButton.IsEnabled = isLicenseFileValid && isLmgrdValid && isLmutilValid;
     }
 
@@ -757,7 +764,7 @@ public partial class MainWindow : Window
                             fileContents = await reader.ReadToEndAsync();
                         }
 
-                        var lines = fileContents.Split(lineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                        var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
                         var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
                         Dispatcher.UIThread.Post(() =>
@@ -878,7 +885,7 @@ public partial class MainWindow : Window
                             fileContents = await reader.ReadToEndAsync();
                         }
 
-                        var lines = fileContents.Split(lineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                        var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
                         bool causeWasFound = false;
 
                         // Yes I'm counting the lines so I can jump between different ones in my if cases below.
