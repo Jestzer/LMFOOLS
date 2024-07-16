@@ -763,23 +763,29 @@ public partial class MainWindow : Window
                 // The command ran, but that doesn't mean FlexLM actually stopped.
                 Console.WriteLine("The command to check FlexLM's status executed successfully.");
                 Console.WriteLine(output);
+                
+                // Find out why FlexLM is down, from the log file, if necessary.
+                string fileContents;
+                using (var stream = File.OpenRead(lmLogPath))
+                using (var reader = new StreamReader(stream))
+                {
+                    fileContents = await reader.ReadToEndAsync();
+                }
+
+                var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
                 // Complete failure to launch.
                 if (output.Contains("lmgrd is not running"))
                 {
+                    if (output.Contains("Cannot read data from license server system. (-16,287)"))
+                    {
+                        // Juuuust try again. :) I should definitely add a counter so it doesn't do this forever.
+                        CheckStatus();
+                    }
+                    
                     if (File.Exists(lmLogPath))
                     {
-                        // Find out why FlexLM is down.
-                        string fileContents;
-                        using (var stream = File.OpenRead(lmLogPath))
-                        using (var reader = new StreamReader(stream))
-                        {
-                            fileContents = await reader.ReadToEndAsync();
-                        }
-
-                        var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
-                        var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
-
                         Dispatcher.UIThread.Post(() =>
                         {
                             if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
@@ -787,7 +793,15 @@ public partial class MainWindow : Window
                                 Dispatcher.UIThread.Post(() =>
                                 {
                                     OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                       "something else.";
+                                                       "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
+                                                       "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
+                                });
+                            }
+                            else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")))
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    OutputTextBlock.Text = "FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.";
                                 });
                             }
                             else
@@ -808,30 +822,45 @@ public partial class MainWindow : Window
                     Dispatcher.UIThread.Post(() =>
                     {
                         OutputTextBlock.Text = "FlexLM is up!";
-                        FlexLmCanStop();
                         OutputLicenseUsageInfo(output, lmLogPath);
                     });
+                    Dispatcher.UIThread.Post(FlexLmCanStop);
                 }
                 // LMGRD launched, but MLM couldn't launch. Let's see if we can find out why!
                 else if (output.Contains("license server UP (MASTER)") && !output.Contains("MLM: UP"))
                 {
                     if (output.Contains("MLM: No socket connection to license server manager."))
                     {
-                        Dispatcher.UIThread.Post(() =>
+                        if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                         {
-                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not due it being unable to use the port it attempted to use. Please press the Stop button or " +
-                                                   "manually end the process. Then, please manually specify a port this program is allowed to use (try 27011, for example.)";
-                            FlexLmCanStop();
-                        });
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
+                                                       "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
+                                                       "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
+                            });
+                        }
+                        else if (last20Lines.Any(line => line.Contains("MLM exited with status 36 (No features to serve)")))
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. None of the products in your license file are valid (are you using a license for a different computer?) " +
+                                                       "Check lmlog.txt in LMFOOLS's directory for more specific errors.";
+                            });
+                        }
+                        else
+                        {
+                            Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
+                        }
                     }
                     else
                     {
                         Dispatcher.UIThread.Post(() =>
                         {
                             OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process.";
-                            FlexLmCanStop();
                         });
                     }
+                    Dispatcher.UIThread.Post(FlexLmCanStop);
                 }
                 // We will assume nothing if we can't definitively tell its status.
                 else
@@ -865,21 +894,7 @@ public partial class MainWindow : Window
 
         OutputTextBlock.Text += "\n"; // Give a bit of space.
 
-        // Iterate through the usage matches.
-        foreach (Match match in usageMatches)
-        {
-            if (match.Success)
-            {
-                string product = match.Groups[1].Value;
-                string totalSeats = match.Groups[2].Value;
-                string seatsInUse = match.Groups[3].Value;
-
-                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
-                OutputTextBlock.Text += formattedOutputText;
-            }
-        }
-
-        // Iterate through the error matches.
+        // Iterate through the error matches first.
         foreach (Match match in errorMatches)
         {
             if (match.Success)
@@ -908,7 +923,7 @@ public partial class MainWindow : Window
 
                             if (line.Contains($"EXPIRED: {product}"))
                             {
-                                formattedOutputText = $"\n{product}: is expired and cannot be used.";
+                                formattedOutputText = $"\n{product} is expired and cannot be used.";
                                 OutputTextBlock.Text += formattedOutputText;
                                 causeWasFound = true;
                                 break;
@@ -917,7 +932,7 @@ public partial class MainWindow : Window
                             {
                                 if (i + 1 < lines.Length && lines[i + 1].Contains($"==>INCREMENT {product}"))
                                 {
-                                    formattedOutputText = $"\n{product}: has an invalid authentication key and needs its license file to be regenerated.";
+                                    formattedOutputText = $"\n{product} has an invalid authentication key and needs its license file to be regenerated.";
                                     OutputTextBlock.Text += formattedOutputText;
                                     causeWasFound = true;
                                     break;
@@ -945,6 +960,22 @@ public partial class MainWindow : Window
                         } 
                     }
                 }
+            }
+        }
+
+        if (errorMatches.Count != 0) { OutputTextBlock.Text += "\n"; }
+        
+        // Now iterate through the usage matches.
+        foreach (Match match in usageMatches)
+        {
+            if (match.Success)
+            {
+                string product = match.Groups[1].Value;
+                string totalSeats = match.Groups[2].Value;
+                string seatsInUse = match.Groups[3].Value;
+
+                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+                OutputTextBlock.Text += formattedOutputText;
             }
         }
     }
