@@ -458,7 +458,8 @@ public partial class MainWindow : Window
 
         if (_stopButtonWasJustUsed)
         {
-            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 15 seconds. This is to ensure FlexLM has fully stopped.");
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 15 seconds. This is to ensure FlexLM has fully stopped " +
+                                                                   "and the desired TCP ports are opened.");
             await Task.Delay(15000); // Wait 15 seconds.
         }
         StartButton.IsEnabled = true;
@@ -559,13 +560,13 @@ public partial class MainWindow : Window
             if (process.ExitCode == 0)
             {
                 // The command ran, but that doesn't mean FlexLM actually stopped.
-                Console.WriteLine("Command executed successfully.");
+                Console.WriteLine("The command to stop FlexLM executed successfully.");
                 Console.WriteLine(output);
             }
             else
             {
                 // Command absolutely failed.
-                Console.WriteLine("Command failed to execute.");
+                Console.WriteLine("The command to stop FlexLM failed to execute.");
                 Console.WriteLine(error);
             }
         }
@@ -644,18 +645,30 @@ public partial class MainWindow : Window
 
             using Process process = new() { StartInfo = startInfo };
             process.Start();
+            
+            // Prevent hanging. Timeout after 3 seconds.
+            // Start reading the output and error streams asynchronously as part of preventing hanging.
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            Task collectDebugInfo = await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(3000));
 
-            // Read the output and error streams for debugging.
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-
-            if (process.ExitCode == 0)
+            if (collectDebugInfo == outputTask)
             {
-                Console.WriteLine(output);
+                var output = await outputTask;
+                var error = await errorTask;
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine(output);
+                }
+                else
+                {
+                    Console.WriteLine(error);
+                }
             }
             else
             {
-                Console.WriteLine(error);
+                Console.WriteLine("Getting startup output timed out to prevent hanging.");
             }
         }
         catch (Exception ex)
@@ -748,7 +761,7 @@ public partial class MainWindow : Window
             if (process.ExitCode == 0)
             {
                 // The command ran, but that doesn't mean FlexLM actually stopped.
-                Console.WriteLine("Command executed successfully.");
+                Console.WriteLine("The command to check FlexLM's status executed successfully.");
                 Console.WriteLine(output);
 
                 // Complete failure to launch.
