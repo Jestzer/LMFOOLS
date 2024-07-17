@@ -689,8 +689,9 @@ public partial class MainWindow : Window
     private async void CheckStatus()
     {
         OutputTextBlock.Text = "Loading. Please wait.";
-
-        await Task.Delay(100);
+        
+        // Hopefully increasing this to 1000 will reduce status error -16s.
+        await Task.Delay(1000);
 
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
@@ -780,8 +781,7 @@ public partial class MainWindow : Window
                 {
                     if (output.Contains("Cannot read data from license server system. (-16,287)"))
                     {
-                        // Juuuust try again. :) I should definitely add a counter so it doesn't do this forever.
-                        CheckStatus();
+                        // # Add some code to make this try again.
                     }
                     
                     if (File.Exists(lmLogPath))
