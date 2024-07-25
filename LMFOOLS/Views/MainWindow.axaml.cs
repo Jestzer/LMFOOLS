@@ -71,7 +71,7 @@ public partial class MainWindow : Window
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
         {
-            return OSPlatform.Windows;
+            return OSPlatform.FreeBSD;
         }
 
         return OSPlatform.Create("UNKNOWN");
