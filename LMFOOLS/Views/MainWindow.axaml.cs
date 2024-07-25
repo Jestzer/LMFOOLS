@@ -36,14 +36,14 @@ public partial class MainWindow : Window
         LicenseFileLocationTextBox.Text = settings.LicenseFilePathSetting;
         LmgrdLocationTextBox.Text = settings.LmgrdPathSetting;
         LmutilLocationTextBox.Text = settings.LmutilPathSetting;
-        
+
         // Let's open with a status check, if we can.
-        if (!string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LmgrdLocationTextBox.Text) && 
+        if (!string.IsNullOrWhiteSpace(LicenseFileLocationTextBox.Text) && !string.IsNullOrWhiteSpace(LmgrdLocationTextBox.Text) &&
             !string.IsNullOrWhiteSpace(LmutilLocationTextBox.Text))
         {
             CheckStatus();
         }
-        
+
         Closing += MainWindow_Closing;
     }
 
@@ -92,7 +92,10 @@ public partial class MainWindow : Window
                 _flexLmIsAlreadyRunning = false;
             }
         }
-        else { _flexLmIsAlreadyRunning = false; }
+        else
+        {
+            _flexLmIsAlreadyRunning = false;
+        }
 
         if (LicenseFileLocationTextBox == null || LmgrdLocationTextBox == null || LmutilLocationTextBox == null) return;
 
@@ -462,6 +465,7 @@ public partial class MainWindow : Window
                                                                    "and the desired TCP ports are opened.");
             await Task.Delay(15000); // Wait 15 seconds.
         }
+
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
     }
@@ -478,8 +482,7 @@ public partial class MainWindow : Window
         StartButton.IsEnabled = true;
         StopButton.IsEnabled = true;
         StatusButton.IsEnabled = true;
-        OutputTextBlock.Text = "Status unknown";
-
+        OutputTextBlock.Text = "Status unknown.";
     }
 
     private void BusyWithFlexLm()
@@ -572,8 +575,11 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}"));
-            FlexLmStatusUnknown();
+            Dispatcher.UIThread.Post(() =>
+            {
+                ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
+                FlexLmStatusUnknown();
+            });
         }
 
         Dispatcher.UIThread.Post(CheckStatus);
@@ -585,15 +591,16 @@ public partial class MainWindow : Window
     {
         string? lmgrdPath = LmgrdLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
+        string? lmutilPath = LmutilLocationTextBox.Text;
 
-        if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+        if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath) && !string.IsNullOrWhiteSpace(lmutilPath))
         {
             BusyWithFlexLm();
             OutputTextBlock.Text = "Loading. Please wait.";
 
             // Same deal as the Stop button.
             await Task.Delay(100);
-            await Task.Run(() => ExecuteStartCommand(lmgrdPath, licenseFilePath));
+            await Task.Run(() => ExecuteStartCommand(lmgrdPath, licenseFilePath, lmutilPath));
         }
         else
         {
@@ -601,7 +608,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ExecuteStartCommand(string lmgrdPath, string licenseFilePath)
+    private async void ExecuteStartCommand(string lmgrdPath, string licenseFilePath, string lmutilPath)
     {
         // Setup file paths to executables.
         if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
@@ -615,6 +622,12 @@ public partial class MainWindow : Window
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            return;
+        }
+
+        if (!File.Exists(lmutilPath))
+        {
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {lmutilPath}"));
             return;
         }
 
@@ -645,7 +658,7 @@ public partial class MainWindow : Window
 
             using Process process = new() { StartInfo = startInfo };
             process.Start();
-            
+
             // Prevent hanging. Timeout after 3 seconds.
             // Start reading the output and error streams asynchronously as part of preventing hanging.
             Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
@@ -689,7 +702,7 @@ public partial class MainWindow : Window
     private async void CheckStatus()
     {
         OutputTextBlock.Text = "Loading. Please wait.";
-        
+
         // Hopefully increasing this to 1000 will reduce status error -16s.
         await Task.Delay(1000);
 
@@ -764,7 +777,7 @@ public partial class MainWindow : Window
                 // The command ran, but that doesn't mean FlexLM actually stopped.
                 Console.WriteLine("The command to check FlexLM's status executed successfully.");
                 Console.WriteLine(output);
-                
+
                 // Find out why FlexLM is down, from the log file, if necessary.
                 string fileContents;
                 using (var stream = File.OpenRead(lmLogPath))
@@ -783,7 +796,7 @@ public partial class MainWindow : Window
                     {
                         // # Add some code to make this try again.
                     }
-                    
+
                     if (File.Exists(lmLogPath))
                     {
                         Dispatcher.UIThread.Post(() =>
@@ -793,16 +806,13 @@ public partial class MainWindow : Window
                                 Dispatcher.UIThread.Post(() =>
                                 {
                                     OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                       "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
-                                                       "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
+                                                           "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
+                                                           "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
                                 });
                             }
                             else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")))
                             {
-                                Dispatcher.UIThread.Post(() =>
-                                {
-                                    OutputTextBlock.Text = "FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.";
-                                });
+                                Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid."; });
                             }
                             else
                             {
@@ -814,6 +824,7 @@ public partial class MainWindow : Window
                     {
                         Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down."; });
                     }
+
                     Dispatcher.UIThread.Post(FlexLmCanStart);
                 }
                 // Successfully launched.
@@ -863,11 +874,9 @@ public partial class MainWindow : Window
                     }
                     else
                     {
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process.";
-                        });
+                        Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
                     }
+
                     Dispatcher.UIThread.Post(FlexLmCanStop);
                 }
                 // We will assume nothing if we can't definitively tell its status.
@@ -885,8 +894,26 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}"));
-            FlexLmStatusUnknown();
+            Dispatcher.UIThread.Post(() =>
+            {
+                string exceptionString = ex.ToString();
+                
+                if (exceptionString.Contains("Could not find the file") && exceptionString.Contains("lmlog.txt"))
+                {
+                    ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
+                }
+                else if (exceptionString.Contains("Could not find the file") && (exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd") || exceptionString.Contains("MLM")))
+                {
+                    ShowErrorWindow("FlexLM and/or MLM could not be found. This could either be due to permissions, it being in a place that this program cannot access, " +
+                                    "or you have a version of FlexLM and/or MLM that requires LSB and this system does not have LSB. Depending on the age of your system," +
+                                    "you may be able to install it. Otherwise, find a newer version that does not require LSB.");
+                }
+                else
+                {
+                    ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}");
+                }
+                FlexLmStatusUnknown();
+            });
         }
     }
 
@@ -965,14 +992,17 @@ public partial class MainWindow : Window
                         {
                             ShowErrorWindow("There was an error when attempting to display the server's status: " + ex.Message);
                             return;
-                        } 
+                        }
                     }
                 }
             }
         }
 
-        if (errorMatches.Count != 0) { OutputTextBlock.Text += "\n"; }
-        
+        if (errorMatches.Count != 0)
+        {
+            OutputTextBlock.Text += "\n";
+        }
+
         // Now iterate through the usage matches.
         foreach (Match match in usageMatches)
         {
