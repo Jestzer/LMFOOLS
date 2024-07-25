@@ -848,6 +848,14 @@ public partial class MainWindow : Window
                                                        "Check lmlog.txt in LMFOOLS's directory for more specific errors.";
                             });
                         }
+                        else if (last20Lines.Any(line => line.Contains("(lmgrd) MLM exited with status 2 signal = 17")))
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. MLM is likely corrupted. Please obtain a new copy of it. " +
+                                                       "If you're using Linux, use 'unzip' instead of Ark to extract any ZIP archives with MLM in it.";
+                            });
+                        }
                         else
                         {
                             Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
