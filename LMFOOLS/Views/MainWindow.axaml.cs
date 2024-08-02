@@ -867,6 +867,14 @@ public partial class MainWindow : Window
                                                        "If you're using Linux, use 'unzip' instead of Ark to extract any ZIP archives with MLM in it.";
                             });
                         }
+                        else if (last20Lines.Any(line => line.Contains("Cannot open license file /usr/local/flexlm/licenses/license.dat")))
+                        {
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                OutputTextBlock.Text = "MLM attempted to use a license file that does not exist. Please place MLM in a directory that this program can access. " +
+                                                       "Hint: try placing it in the same directory as your license file.";
+                            });
+                        }
                         else
                         {
                             Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
