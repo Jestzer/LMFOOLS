@@ -125,25 +125,23 @@ public partial class MainWindow : Window
 
 
     [JsonSerializable(typeof(Settings))]
-    internal partial class SettingsJsonContext : JsonSerializerContext
-    {
-    }
+    internal partial class SettingsJsonContext : JsonSerializerContext { }
 
     private static void SaveSettings(Settings settings)
     {
         var options = new JsonSerializerOptions { WriteIndented = true };
         string jsonString = JsonSerializer.Serialize(settings, SettingsJsonContext.Default.Settings);
-        File.WriteAllText("settings.json", jsonString);
+        File.WriteAllText("settings-LMFOOLS.json", jsonString);
     }
 
     private static Settings LoadSettings()
     {
-        if (!File.Exists("settings.json"))
+        if (!File.Exists("settings-LMFOOLS.json"))
         {
             return new Settings(); // Return default settings if file not found.
         }
 
-        string jsonString = File.ReadAllText("settings.json");
+        string jsonString = File.ReadAllText("settings-LMFOOLS.json");
         return JsonSerializer.Deserialize(jsonString, SettingsJsonContext.Default.Settings) ?? new Settings();
     }
 
