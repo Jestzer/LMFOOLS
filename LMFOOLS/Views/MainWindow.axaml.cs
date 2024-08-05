@@ -123,25 +123,76 @@ public partial class MainWindow : Window
         BadFlexLmStatusCheckAndButtonUpdate();
     }
 
-
     [JsonSerializable(typeof(Settings))]
     internal partial class SettingsJsonContext : JsonSerializerContext { }
 
+    public static (string settingsPath, string lmLogPath) DeterminePaths()
+    {
+        string settingsPath;
+        string lmLogPath;
+
+        if (OperatingSystem.IsWindows())
+        {
+            string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            settingsPath = Path.Combine(appDataPath, "Jestzer.Programs", "LMFOOLS", "settings-lmfools.json");
+            lmLogPath = Path.Combine(appDataPath, "Jestzer.Programs", "LMFOOLS", "lmlog.txt");
+        }
+        else if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
+        {
+            string homePath = Environment.GetEnvironmentVariable("HOME") ?? "/tmp";
+            settingsPath = Path.Combine(homePath, ".Jestzer.Programs", "LMFOOLS", "settings-lmfools.json");
+            lmLogPath = Path.Combine(homePath, "Jestzer.Programs", "LMFOOLS", "lmlog.txt"); ;
+        }
+        else
+        {
+            settingsPath = "settings-lmfools.json";
+            lmLogPath = "lmlog.txt";
+            Console.WriteLine("Warning: your operating system has been detected as something other than Windows, Linux, or macOS. " +
+            "Your settings and FlexLM log file will be saved in your current directory.");
+        }
+
+        string directoryPath = Path.GetDirectoryName(settingsPath) ?? "";
+        if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        if (string.IsNullOrEmpty(directoryPath))
+        {
+            Console.WriteLine("Warning: your settings' directory path is null or empty. Settings may not work correctly and your log file may not load correctly.");
+        }
+
+        return (settingsPath, lmLogPath);
+    }
+
+    public static string SettingsPath()
+    {
+        var (settingsPath, _) = DeterminePaths();
+        return settingsPath;
+    }
+
+    public static string LmLogPath()
+    {
+        var (_, lmLogPath) = DeterminePaths();
+        return lmLogPath;
+    }
+
     private static void SaveSettings(Settings settings)
     {
-        var options = new JsonSerializerOptions { WriteIndented = true };
+        string settingsPath = SettingsPath();
         string jsonString = JsonSerializer.Serialize(settings, SettingsJsonContext.Default.Settings);
-        File.WriteAllText("settings-LMFOOLS.json", jsonString);
+        File.WriteAllText(settingsPath, jsonString);
     }
 
     private static Settings LoadSettings()
     {
-        if (!File.Exists("settings-LMFOOLS.json"))
+        string settingsPath = SettingsPath();
+        if (!File.Exists(settingsPath))
         {
             return new Settings(); // Return default settings if file not found.
         }
 
-        string jsonString = File.ReadAllText("settings-LMFOOLS.json");
+        string jsonString = File.ReadAllText(settingsPath);
         return JsonSerializer.Deserialize(jsonString, SettingsJsonContext.Default.Settings) ?? new Settings();
     }
 
@@ -630,15 +681,16 @@ public partial class MainWindow : Window
         }
 
         string arguments;
+        string lmLogPath = LmLogPath();
 
         // Arguments for lmgrd.
         if (_platform == OSPlatform.Windows)
         {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{_currentDirectory}\\lmlog.txt\"";
+            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}";
         }
         else
         {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{_currentDirectory}/lmlog.txt\"";
+            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}";
         }
 
         // Execute the full command!
@@ -706,20 +758,11 @@ public partial class MainWindow : Window
 
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
-        string lmLogPath;
+        string lmLogPath = LmLogPath();
 
         if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
             BusyWithFlexLm();
-
-            if (_platform == OSPlatform.Windows)
-            {
-                lmLogPath = _currentDirectory + "\\lmlog.txt";
-            }
-            else
-            {
-                lmLogPath = _currentDirectory + "/lmlog.txt";
-            }
 
             // Run the long-running code asynchronously
             await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
@@ -903,7 +946,7 @@ public partial class MainWindow : Window
             Dispatcher.UIThread.Post(() =>
             {
                 string exceptionString = ex.ToString();
-                
+
                 if (exceptionString.Contains("Could not find the file") && exceptionString.Contains("lmlog.txt"))
                 {
                     ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
