@@ -140,8 +140,8 @@ public partial class MainWindow : Window
         else if (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux())
         {
             string homePath = Environment.GetEnvironmentVariable("HOME") ?? "/tmp";
-            settingsPath = Path.Combine(homePath, ".Jestzer.Programs", "LMFOOLS", "settings-lmfools.json");
-            lmLogPath = Path.Combine(homePath, "Jestzer.Programs", "LMFOOLS", "lmlog.txt"); ;
+            settingsPath = Path.Combine(homePath, ".config", "Jestzer.Programs", "LMFOOLS", "settings-lmfools.json");
+            lmLogPath = Path.Combine(homePath, ".config", "Jestzer.Programs", "LMFOOLS", "lmlog.txt"); ;
         }
         else
         {
@@ -626,15 +626,21 @@ public partial class MainWindow : Window
         {
             Dispatcher.UIThread.Post(() =>
             {
-                ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
+                string exceptionString = ex.ToString();
+                if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
+                {
+                    ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
+                }
+                else
+                {
+                    ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
+
+                }
                 FlexLmStatusUnknown();
             });
         }
-
         Dispatcher.UIThread.Post(CheckStatus);
     }
-
-    private readonly string _currentDirectory = Environment.CurrentDirectory;
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
@@ -947,11 +953,12 @@ public partial class MainWindow : Window
             {
                 string exceptionString = ex.ToString();
 
-                if (exceptionString.Contains("Could not find the file") && exceptionString.Contains("lmlog.txt"))
+                if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
                 {
                     ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
                 }
-                else if (exceptionString.Contains("Could not find the file") && (exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd") || exceptionString.Contains("MLM")))
+                else if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) &&
+                (exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd") || exceptionString.Contains("MLM")))
                 {
                     ShowErrorWindow("FlexLM and/or MLM could not be found. This could either be due to permissions, it being in a place that this program cannot access, " +
                                     "or you have a version of FlexLM and/or MLM that requires LSB and this system does not have LSB. Depending on the age of your system," +
