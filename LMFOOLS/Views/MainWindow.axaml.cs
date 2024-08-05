@@ -755,6 +755,12 @@ public partial class MainWindow : Window
         CheckStatus();
     }
 
+    private void LogButton_Click(object sender, RoutedEventArgs e)
+    {
+        string lmLogPath = LmLogPath();
+        
+    }
+
     private async void CheckStatus()
     {
         OutputTextBlock.Text = "Loading. Please wait.";
