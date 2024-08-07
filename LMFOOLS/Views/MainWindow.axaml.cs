@@ -627,7 +627,7 @@ public partial class MainWindow : Window
             Dispatcher.UIThread.Post(() =>
             {
                 string exceptionString = ex.ToString();
-                if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
+                if ((exceptionString.Contains("Could not find file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
                 {
                     ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
                 }
@@ -692,11 +692,11 @@ public partial class MainWindow : Window
         // Arguments for lmgrd.
         if (_platform == OSPlatform.Windows)
         {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}";
+            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
         }
         else
         {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}";
+            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
         }
 
         // Execute the full command!
@@ -758,7 +758,21 @@ public partial class MainWindow : Window
     private void LogButton_Click(object sender, RoutedEventArgs e)
     {
         string lmLogPath = LmLogPath();
-        
+        if (File.Exists(lmLogPath))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = lmLogPath,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {                
+                Dispatcher.UIThread.Post(() => ShowErrorWindow($"Failed to open log file: {ex.Message}"));
+            }
+        }
     }
 
     private async void CheckStatus()
@@ -833,7 +847,7 @@ public partial class MainWindow : Window
 
                 // Find out why FlexLM is down, from the log file, if necessary.
                 string fileContents;
-                using (var stream = File.OpenRead(lmLogPath))
+                using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 using (var reader = new StreamReader(stream))
                 {
                     fileContents = await reader.ReadToEndAsync();
@@ -959,16 +973,20 @@ public partial class MainWindow : Window
             {
                 string exceptionString = ex.ToString();
 
-                if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
+                if ((exceptionString.Contains("Could not find file") || exceptionString.Contains("Could not find a part of the path")) && exceptionString.Contains("lmlog.txt"))
                 {
                     ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
                 }
-                else if ((exceptionString.Contains("Could not find the file") || exceptionString.Contains("Could not find a part of the path")) &&
+                else if ((exceptionString.Contains("Could not find file") || exceptionString.Contains("Could not find a part of the path")) &&
                 (exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd") || exceptionString.Contains("MLM")))
                 {
                     ShowErrorWindow("FlexLM and/or MLM could not be found. This could either be due to permissions, it being in a place that this program cannot access, " +
                                     "or you have a version of FlexLM and/or MLM that requires LSB and this system does not have LSB. Depending on the age of your system," +
                                     "you may be able to install it. Otherwise, find a newer version that does not require LSB.");
+                }
+                else if (exceptionString.Contains("lmlog.txt") && exceptionString.Contains("because it is being used by another process"))
+                {
+                    ShowErrorWindow("You have the log file opened in another program, which is preventing this program from retrieving the server's status.");
                 }
                 else
                 {
@@ -1074,7 +1092,15 @@ public partial class MainWindow : Window
                 string totalSeats = match.Groups[2].Value;
                 string seatsInUse = match.Groups[3].Value;
 
-                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+                // Stupid grammar.
+                if (totalSeats == "1")
+                {
+                    formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seat in use.";
+                }
+                else
+                {
+                    formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+                }
                 OutputTextBlock.Text += formattedOutputText;
             }
         }
