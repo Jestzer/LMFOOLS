@@ -136,7 +136,7 @@
                 </Style>
             </Button.Styles>
         </Button>
-        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,277,36,36">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="36,237,36,36">
             <TextBlock Name="OutputTextBlock"
                 TextWrapping="Wrap"
                 Text="lmgrd's status will appear here."
@@ -170,7 +170,7 @@
             HorizontalContentAlignment="Center"
             VerticalContentAlignment="Center"
             HorizontalAlignment="Left"
-            Margin="550,70,0,0"
+            Margin="550,50,0,0"
             VerticalAlignment="Top"
             Width="70"
             Foreground="White"
@@ -195,7 +195,7 @@
             HorizontalContentAlignment="Center"
             VerticalContentAlignment="Center"
             HorizontalAlignment="Left"
-            Margin="550,118,0,0"
+            Margin="550,98,0,0"
             VerticalAlignment="Top"
             Width="70"
             Foreground="White"
@@ -220,7 +220,7 @@
             HorizontalContentAlignment="Center"
             VerticalContentAlignment="Center"
             HorizontalAlignment="Left"
-            Margin="550,166,0,0"
+            Margin="550,146,0,0"
             VerticalAlignment="Top"
             Width="70"
             Foreground="White"
@@ -245,11 +245,11 @@
             HorizontalContentAlignment="Center"
             VerticalContentAlignment="Center"
             HorizontalAlignment="Left"
-            Margin="550,236,0,0"
+            Margin="527,194,0,0"
             VerticalAlignment="Top"
             Width="120"
             Foreground="White"
-            Click="StatusButton_Click">
+            Click="LogButton_Click">
             <Button.Styles>
                 <Style Selector="Button">
                     <Setter Property="Background" Value="#FF464646" />
