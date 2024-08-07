@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -574,12 +575,14 @@ public partial class MainWindow : Window
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
@@ -631,6 +634,12 @@ public partial class MainWindow : Window
                 {
                     ShowErrorWindow("The log file couldn't be found. You either deleted it or haven't started the server from this program yet. :)");
                 }
+                else if ((exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd")) && exceptionString.Contains("No such file or directory") && _platform == OSPlatform.Linux)
+                {
+                    ShowErrorWindow($"The server could not be stopped because lmutil and/or lmgrd was not found. This is likely because you are using a version of FlexLM and/or MLM that requires LSB. " +
+                    "Please obtain a newer copy of FlexLM and/or MLM that does not require LSB or install LSB on your system, if it's able to do so.");
+                    return;
+                }
                 else
                 {
                     ShowErrorWindow($"Something bad happened when you tried to stop FlexLM. Here's the automatic error message: {ex.Message}");
@@ -671,18 +680,21 @@ public partial class MainWindow : Window
         if (!File.Exists(lmgrdPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmgrd executable was not found at the specified path: {lmgrdPath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {lmutilPath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
@@ -742,7 +754,23 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}"));
+            Dispatcher.UIThread.Post(() =>
+            {
+                FlexLmStatusUnknown();
+                string exceptionString = ex.ToString();
+
+                if ((exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd")) && exceptionString.Contains("No such file or directory") && _platform == OSPlatform.Linux)
+                {
+                    ShowErrorWindow($"The server could not be started because lmutil and/or lmgrd was not found. This is likely because you are using a version of FlexLM and/or MLM that requires LSB. " +
+                    "Please obtain a newer copy of FlexLM and/or MLM that does not require LSB or install LSB on your system, if it's able to do so.");
+                    FlexLmCanStart();
+                    return;
+                }
+                else
+                {
+                    ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}");
+                }
+            });
         }
 
         await Task.Delay(1000);
@@ -769,7 +797,7 @@ public partial class MainWindow : Window
                 });
             }
             catch (Exception ex)
-            {                
+            {
                 Dispatcher.UIThread.Post(() => ShowErrorWindow($"Failed to open log file: {ex.Message}"));
             }
         }
@@ -804,12 +832,14 @@ public partial class MainWindow : Window
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
@@ -863,36 +893,37 @@ public partial class MainWindow : Window
                     {
                         // # Add some code to make this try again.
                     }
-
-                    if (File.Exists(lmLogPath))
+                    Dispatcher.UIThread.Post(() =>
                     {
-                        Dispatcher.UIThread.Post(() =>
+                        if (File.Exists(lmLogPath))
                         {
+
                             if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                             {
                                 Dispatcher.UIThread.Post(() =>
                                 {
-                                    OutputTextBlock.Text = "FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
+                                    ShowErrorWindow("FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
                                                            "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
-                                                           "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
+                                                           "Otherwise, if you're on Linux, I recommend trying TCP port 27011.");
                                 });
                             }
-                            else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")))
+                            else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")) ||
+                            (last20Lines.Any(line => line.Contains("Unknown Hostname: ")) && last20Lines.Any(line => line.Contains("license file is not available in the local network database"))))
                             {
-                                Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid."; });
+                                ShowErrorWindow("FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.");
                             }
                             else
                             {
-                                Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down."; });
+                                ShowErrorWindow("FlexLM is down. Check the log file for more information.");
                             }
-                        });
-                    }
-                    else
-                    {
-                        Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "FlexLM is down."; });
-                    }
 
-                    Dispatcher.UIThread.Post(FlexLmCanStart);
+                        }
+                        else
+                        {
+                            ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                        }
+                        FlexLmCanStart();
+                    });
                 }
                 // Successfully launched.
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
@@ -988,6 +1019,13 @@ public partial class MainWindow : Window
                 {
                     ShowErrorWindow("You have the log file opened in another program, which is preventing this program from retrieving the server's status.");
                 }
+                else if ((exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd")) && exceptionString.Contains("No such file or directory") && _platform == OSPlatform.Linux)
+                {
+                    FlexLmStatusUnknown();
+                    ShowErrorWindow($"The server status could not be checked because lmutil and/or lmgrd was not found. This is likely because you are using a version of FlexLM and/or MLM that requires LSB. " +
+                    "Please obtain a newer copy of FlexLM and/or MLM that does not require LSB or install LSB on your system, if it's able to do so.");
+                    return;
+                }
                 else
                 {
                     ShowErrorWindow($"Something bad happened when you tried to check FlexLM status. Here's the automatic error message: {ex.Message}");
@@ -1003,11 +1041,40 @@ public partial class MainWindow : Window
         string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
         string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
         string formattedOutputText;
+        string[] logLines;
+        string logFileContents;
+        IEnumerable<string> last50Lines;
 
         MatchCollection usageMatches = Regex.Matches(output, usagePattern);
         MatchCollection errorMatches = Regex.Matches(output, errorPattern);
 
         OutputTextBlock.Text += "\n"; // Give a bit of space.
+
+        // Find out why your product is unavailable. Check for other errors too.
+        try
+        {
+            using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(stream))
+            {
+                logFileContents = await reader.ReadToEndAsync();
+            }
+
+            logLines = logFileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
+            last50Lines = logLines.Skip(Math.Max(0, logLines.Length - 50));
+        }
+        catch (Exception ex)
+        {
+            if (ex.Message.Contains("lmlog.txt' because it is being used by another process."))
+            {
+                ShowErrorWindow("Another program is using the log file. Please close that program in order to proceed.");
+                return;
+            }
+            else
+            {
+                ShowErrorWindow("Something bad happened when attempting to display the server's status: " + ex.Message);
+                return;
+            }
+        }
 
         // Iterate through the error matches first.
         foreach (Match match in errorMatches)
@@ -1020,62 +1087,50 @@ public partial class MainWindow : Window
                 {
                     try
                     {
-                        // Find out why your product is unavailable.
-                        string fileContents;
-                        using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                        using (var reader = new StreamReader(stream))
-                        {
-                            fileContents = await reader.ReadToEndAsync();
-                        }
-
-                        var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
                         bool causeWasFound = false;
 
                         // Yes I'm counting the lines so I can jump between different ones in my if cases below.
-                        for (int i = 0; i < lines.Length; i++)
+                        for (int i = 0; i < logLines.Length; i++)
                         {
-                            var line = lines[i];
+                            var line = logLines[i];
 
                             if (line.Contains($"EXPIRED: {product}"))
                             {
-                                formattedOutputText = $"\n{product} is expired and cannot be used.";
-                                OutputTextBlock.Text += formattedOutputText;
+                                OutputTextBlock.Text += $"\n{product} is expired and cannot be used.";
                                 causeWasFound = true;
                                 break;
                             }
                             else if (line.Contains("Invalid license key (inconsistent authentication code)"))
                             {
-                                if (i + 1 < lines.Length && lines[i + 1].Contains($"==>INCREMENT {product}"))
+                                if (i + 1 < logLines.Length && logLines[i + 1].Contains($"==>INCREMENT {product}"))
                                 {
-                                    formattedOutputText = $"\n{product} has an invalid authentication key and needs its license file to be regenerated.";
-                                    OutputTextBlock.Text += formattedOutputText;
+                                    OutputTextBlock.Text += $"\n{product} has an invalid authentication key and needs its license file to be regenerated.";
                                     causeWasFound = true;
                                     break;
                                 }
+                            }
+                            else if (line.Contains("(MLM) CANNOT OPEN options file"))
+                            {
+
                             }
                         }
 
                         if (!causeWasFound)
                         {
-                            formattedOutputText = $"\n{product}: an error is preventing this product from being used.";
-                            OutputTextBlock.Text += formattedOutputText;
+                            OutputTextBlock.Text += $"\n{product}: an error is preventing this product from being used.";
                         }
                     }
                     catch (Exception ex)
                     {
-                        if (ex.Message.Contains("lmlog.txt' because it is being used by another process."))
-                        {
-                            ShowErrorWindow("Another program is using the log file. Please close that program in order to proceed.");
-                            return;
-                        }
-                        else
-                        {
-                            ShowErrorWindow("There was an error when attempting to display the server's status: " + ex.Message);
-                            return;
-                        }
+                        ShowErrorWindow($"Something bad happened when we tried to print out the server's status info. Here's the automatic error message: {ex.Message}");
                     }
                 }
             }
+        }
+
+        if (last50Lines.Any(line => line.Contains("(MLM) CANNOT OPEN options file")))
+        {
+            OutputTextBlock.Text += "\nYour options file could not be opened. Make sure the path to it in your license file is correct.";
         }
 
         if (errorMatches.Count != 0)
