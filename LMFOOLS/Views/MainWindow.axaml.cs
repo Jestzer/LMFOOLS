@@ -20,6 +20,8 @@ namespace LMFOOLS.Views;
 
 public partial class MainWindow : Window
 {
+    private bool _programWasJustLaunched = true;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -80,6 +82,7 @@ public partial class MainWindow : Window
 
     private bool _flexLmIsAlreadyRunning;
 
+    // It's bad because it's not a thorough check.
     private void BadFlexLmStatusCheckAndButtonUpdate()
     {
         if (OutputTextBlock.Text != null)
@@ -507,15 +510,16 @@ public partial class MainWindow : Window
     private async void FlexLmCanStart()
     {
         StopButton.IsEnabled = false;
-        StatusButton.IsEnabled = true;
 
         if (_stopButtonWasJustUsed)
         {
-            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 15 seconds. This is to ensure FlexLM has fully stopped " +
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 30 seconds. This is to ensure FlexLM has fully stopped " +
                                                                    "and the desired TCP ports are opened.");
-            await Task.Delay(15000); // Wait 15 seconds.
+            StatusButton.IsEnabled = false;
+            await Task.Delay(30000); // Wait 30 seconds.
         }
 
+        StatusButton.IsEnabled = true;
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
     }
@@ -891,7 +895,7 @@ public partial class MainWindow : Window
                 {
                     if (output.Contains("Cannot read data from license server system. (-16,287)"))
                     {
-                        // # Add some code to make this try again.
+                        // This seems to mostly come up when you check the server's status too quickly. The delay I currently have seems to be enough time, so I'm not doing anything with this for now.
                     }
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -914,13 +918,29 @@ public partial class MainWindow : Window
                             }
                             else
                             {
-                                ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                                if (_stopButtonWasJustUsed || _programWasJustLaunched)
+                                {
+                                    OutputTextBlock.Text = "FlexLM is down.";
+                                    _programWasJustLaunched = false;
+                                }
+                                else
+                                {
+                                    ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                                }
                             }
 
                         }
                         else
                         {
-                            ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                            if (_stopButtonWasJustUsed || _programWasJustLaunched)
+                            {
+                                OutputTextBlock.Text = "FlexLM is down.";
+                                _programWasJustLaunched = false;
+                            }
+                            else
+                            {
+                                ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                            }
                         }
                         FlexLmCanStart();
                     });
@@ -1109,10 +1129,6 @@ public partial class MainWindow : Window
                                     break;
                                 }
                             }
-                            else if (line.Contains("(MLM) CANNOT OPEN options file"))
-                            {
-
-                            }
                         }
 
                         if (!causeWasFound)
@@ -1128,7 +1144,7 @@ public partial class MainWindow : Window
             }
         }
 
-        if (last50Lines.Any(line => line.Contains("(MLM) CANNOT OPEN options file")))
+        if (last50Lines.Any(line => line.Contains("(MLM) CANNOT OPEN options file")) && !last50Lines.Any(line => line.Contains("options file \"License\"")))
         {
             OutputTextBlock.Text += "\nYour options file could not be opened. Make sure the path to it in your license file is correct.";
         }
