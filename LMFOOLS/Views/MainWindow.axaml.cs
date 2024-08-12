@@ -332,17 +332,6 @@ public partial class MainWindow : Window
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
 
-                    if (filePath != null)
-                    {
-                        if (filePath.Contains("/run/user/1000/doc/"))
-                        {
-                            ShowErrorWindow(
-                                "There is an issue with the license file: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                            LicenseFileLocationTextBox.Text = string.Empty;
-                            return;
-                        }
-                    }
-
                     LicenseFileLocationTextBox.Text = filePath;
                 }
             }
@@ -990,7 +979,7 @@ public partial class MainWindow : Window
                             Dispatcher.UIThread.Post(() =>
                             {
                                 OutputTextBlock.Text = "MLM attempted to use a license file that does not exist. Please place MLM in a directory that this program can access. " +
-                                                       "Hint: try placing it in the same directory as your license file.";
+                                                       "Hint: try placing it in the same directory as your license file or in a user-specific folder.";
                             });
                         }
                         else
