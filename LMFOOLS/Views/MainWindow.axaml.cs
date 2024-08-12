@@ -905,6 +905,10 @@ public partial class MainWindow : Window
                             {
                                 ShowErrorWindow("FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.");
                             }
+                            else if (last20Lines.Any(line => line.Contains("(There are no VENDOR (or DAEMON) lines in the license file)")))
+                            {
+                                ShowErrorWindow("FlexLM did not start because you are missing your DAEMON line from your license file.");
+                            }
                             else
                             {
                                 if (_stopButtonWasJustUsed || _programWasJustLaunched)
@@ -1005,6 +1009,14 @@ public partial class MainWindow : Window
                 // Command absolutely failed.
                 Console.WriteLine("Command failed to execute.");
                 Console.WriteLine(error);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (_programWasJustLaunched)
+                    {
+                        ShowErrorWindow("Failed to execute the status check command. Please check your license and log file for errors, such as (but definitely not limited to) a missing SERVER line.");
+                    }
+                    FlexLmStatusUnknown();
+                });
             }
         }
         catch (Exception ex)
