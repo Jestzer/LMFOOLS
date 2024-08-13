@@ -11,4 +11,3 @@ I'll compiled macOS builds if anybody actually wants them.
 
 To-do:
 - Figure out how to get macOS and Linux lmgrd and lmutil to show up in the file picker
-- Remove blank icon from update and error windows

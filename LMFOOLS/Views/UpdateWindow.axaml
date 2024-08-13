@@ -8,7 +8,8 @@
         MinWidth="450" MinHeight="250"
         CanResize="False"
         Background="#FF2D2B2B"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Icon="/Assets/icon.ico">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
