@@ -377,11 +377,11 @@ public partial class MainWindow : Window
 
                     // Check the file size indirectly via its content length.
                     long fileSizeInBytes = fileContents.Length;
-                    const long twoMegabytes = 2L * 1024L * 1024L;
+                    const long twoMegabytes = 4L * 1024L * 1024L;
 
                     if (fileSizeInBytes > twoMegabytes)
                     {
-                        ShowErrorWindow("The selected file is over 2 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
+                        ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
                         LmgrdLocationTextBox.Text = string.Empty;
                         return;
                     }
@@ -396,17 +396,6 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
-
-                    if (filePath != null)
-                    {
-                        if (filePath.Contains("/run/user/1000/doc/"))
-                        {
-                            ShowErrorWindow(
-                                "There is an issue with lmgrd: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                            LmgrdLocationTextBox.Text = string.Empty;
-                            return;
-                        }
-                    }
 
                     LmgrdLocationTextBox.Text = filePath;
                 }
@@ -426,11 +415,11 @@ public partial class MainWindow : Window
 
             var filePickerOptions = new FilePickerOpenOptions
             {
-                Title = "Select the lmutil executable",
+                Title = "Select lmutil",
                 AllowMultiple = false,
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("lmutil executable") { Patterns = ["lmutil.exe", "lmutil"] },
+                    new FilePickerFileType("lmutil") { Patterns = ["lmuti*", "lmutil.exe"] },
                     new FilePickerFileType("All Files") { Patterns = ["*"] }
                 ]
             };
@@ -453,11 +442,11 @@ public partial class MainWindow : Window
 
                     // Check the file size indirectly via its content length.
                     long fileSizeInBytes = fileContents.Length;
-                    const long twoMegabytes = 2L * 1024L * 1024L;
+                    const long twoMegabytes = 4L * 1024L * 1024L;
 
                     if (fileSizeInBytes > twoMegabytes)
                     {
-                        ShowErrorWindow("The selected file is over 2 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
+                        ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
                         LmutilLocationTextBox.Text = string.Empty;
                         return;
                     }
@@ -472,17 +461,6 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
-
-                    if (filePath != null)
-                    {
-                        if (filePath.Contains("/run/user/1000/doc/"))
-                        {
-                            ShowErrorWindow(
-                                "There is an issue with lmutil: it resides in a directory that this program does not have access to. Please move it elsewhere or choose a different file.");
-                            LmutilLocationTextBox.Text = string.Empty;
-                            return;
-                        }
-                    }
 
                     LmutilLocationTextBox.Text = filePath;
                 }
@@ -511,6 +489,7 @@ public partial class MainWindow : Window
         StatusButton.IsEnabled = true;
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
+        
     }
 
     private void FlexLmCanStop()
@@ -518,6 +497,7 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = true;
         StartButton.IsEnabled = false;
         StatusButton.IsEnabled = true;
+        _programWasJustLaunched = false;
     }
 
     private void FlexLmStatusUnknown()
@@ -526,6 +506,7 @@ public partial class MainWindow : Window
         StopButton.IsEnabled = true;
         StatusButton.IsEnabled = true;
         OutputTextBlock.Text = "Status unknown.";
+        _programWasJustLaunched = false;
     }
 
     private void BusyWithFlexLm()
@@ -914,7 +895,6 @@ public partial class MainWindow : Window
                                 if (_stopButtonWasJustUsed || _programWasJustLaunched)
                                 {
                                     OutputTextBlock.Text = "FlexLM is down.";
-                                    _programWasJustLaunched = false;
                                 }
                                 else
                                 {
@@ -928,7 +908,6 @@ public partial class MainWindow : Window
                             if (_stopButtonWasJustUsed || _programWasJustLaunched)
                             {
                                 OutputTextBlock.Text = "FlexLM is down.";
-                                _programWasJustLaunched = false;
                             }
                             else
                             {
@@ -1011,9 +990,10 @@ public partial class MainWindow : Window
                 Console.WriteLine(error);
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (_programWasJustLaunched)
+                    if (!_programWasJustLaunched)
                     {
-                        ShowErrorWindow("Failed to execute the status check command. Please check your license and log file for errors, such as (but definitely not limited to) a missing SERVER line.");
+                        ShowErrorWindow("Failed to execute the status check command. Please check your license and log file for errors, such as (but definitely not limited to) a missing or misformatted SERVER line. " +
+                        "Additionally, please make you have permissions to execute lmgrd, MLM, and lmutil.");
                     }
                     FlexLmStatusUnknown();
                 });
