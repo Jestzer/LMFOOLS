@@ -354,7 +354,7 @@ public partial class MainWindow : Window
                 AllowMultiple = false,
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("lmgrd executable") { Patterns = ["lmgrd.exe", "lmgrd"] },
+                    new FilePickerFileType("lmgrd executable") { Patterns = ["lmgr*"] },
                     new FilePickerFileType("All Files") { Patterns = ["*"] }
                 ]
             };
@@ -381,14 +381,14 @@ public partial class MainWindow : Window
 
                     if (fileSizeInBytes > twoMegabytes)
                     {
-                        ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
+                        ShowErrorWindow("Error: the selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
                         LmgrdLocationTextBox.Text = string.Empty;
                         return;
                     }
 
                     if (string.IsNullOrWhiteSpace(fileContents))
                     {
-                        ShowErrorWindow("There is an issue with lmgrd: it is either empty or is read-only.");
+                        ShowErrorWindow("Error: there is an issue with lmgrd: it is either empty or is read-only.");
                         LmgrdLocationTextBox.Text = string.Empty;
                         return;
                     }
@@ -396,6 +396,22 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
+
+                    if (filePath != null)
+                    {
+                        if (filePath.EndsWith("lmutil") || filePath.EndsWith("lmutil.exe"))
+                        {
+                            ShowErrorWindow("Error: you selected lmutil instead of lmgrd.");
+                            LmgrdLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+                        else if (!filePath.EndsWith("lmgrd") || !filePath.EndsWith("lmgrd.exe"))
+                        {
+                            ShowErrorWindow("Error: you selected a file other than lmgrd");
+                            LmgrdLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+                    }
 
                     LmgrdLocationTextBox.Text = filePath;
                 }
@@ -419,7 +435,7 @@ public partial class MainWindow : Window
                 AllowMultiple = false,
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("lmutil") { Patterns = ["lmuti*", "lmutil.exe"] },
+                    new FilePickerFileType("lmutil") { Patterns = ["lmu*"] },
                     new FilePickerFileType("All Files") { Patterns = ["*"] }
                 ]
             };
@@ -462,6 +478,22 @@ public partial class MainWindow : Window
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
 
+                    if (filePath != null)
+                    {
+                        if (filePath.EndsWith("lmgrd") || filePath.EndsWith("lmgrd.exe"))
+                        {
+                            ShowErrorWindow("Error: you selected lmgrd instead of lmutil.");
+                            LmgrdLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+                        else if (!filePath.EndsWith("lmutil") || !filePath.EndsWith("lmutil.exe"))
+                        {
+                            ShowErrorWindow("Error: you selected a file other than lmutil");
+                            LmgrdLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+                    }
+
                     LmutilLocationTextBox.Text = filePath;
                 }
             }
@@ -489,7 +521,7 @@ public partial class MainWindow : Window
         StatusButton.IsEnabled = true;
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
-        
+
     }
 
     private void FlexLmCanStop()
