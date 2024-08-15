@@ -1148,6 +1148,15 @@ public partial class MainWindow : Window
                                 causeWasFound = true;
                                 break;
                             }
+                            else if (line.Contains($"((MLM) USER_BASED license error for {product} --"))
+                            {
+                                if (i + 1 < logLines.Length && logLines[i + 1].Contains($"Number of INCLUDE names (") && logLines[i + 1].Contains($") exceeds limit of"))
+                                {
+                                    OutputTextBlock.Text += $"\n{product} has too many users included from the options file and therefore, cannot be used.";
+                                    causeWasFound = true;
+                                    break;
+                                }
+                            }
                         }
 
                         if (!causeWasFound)
