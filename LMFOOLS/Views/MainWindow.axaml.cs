@@ -1142,6 +1142,12 @@ public partial class MainWindow : Window
                                     break;
                                 }
                             }
+                            else if (line.Contains($"(MLM) USER_BASED license error for {product} (INCLUDE missing)"))
+                            {
+                                OutputTextBlock.Text += $"\n{product} is from an NNU license and does not have a valid INCLUDE setup. Therefore, it cannot be used.";
+                                causeWasFound = true;
+                                break;
+                            }
                         }
 
                         if (!causeWasFound)
