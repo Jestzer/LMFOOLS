@@ -405,9 +405,9 @@ public partial class MainWindow : Window
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
-                        else if (!filePath.EndsWith("lmgrd") || !filePath.EndsWith("lmgrd.exe"))
+                        else if (!filePath.EndsWith("lmgrd") && !filePath.EndsWith("lmgrd.exe"))
                         {
-                            ShowErrorWindow("Error: you selected a file other than lmgrd");
+                            ShowErrorWindow("Error: you selected a file other than lmgrd.");
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
@@ -486,9 +486,9 @@ public partial class MainWindow : Window
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
-                        else if (!filePath.EndsWith("lmutil") || !filePath.EndsWith("lmutil.exe"))
+                        else if (!filePath.EndsWith("lmutil") && !filePath.EndsWith("lmutil.exe"))
                         {
-                            ShowErrorWindow("Error: you selected a file other than lmutil");
+                            ShowErrorWindow("Error: you selected a file other than lmutil.");
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
