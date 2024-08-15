@@ -1172,9 +1172,23 @@ public partial class MainWindow : Window
             }
         }
 
+        bool optionsFileCannotBeUsed = false;
+
         if (last50Lines.Any(line => line.Contains("(MLM) CANNOT OPEN options file")) && !last50Lines.Any(line => line.Contains("options file \"License\"")))
         {
             OutputTextBlock.Text += "\nYour options file could not be opened. Make sure the path to it in your license file is correct.";
+            optionsFileCannotBeUsed = true;
+        }
+
+        if (logLines.Any(line => line.Contains("(MLM) NOTE: Some features are USER_BASED or HOST_BASED")))
+        {
+            if (errorMatches.Count != 0 || optionsFileCannotBeUsed == true)
+            {
+                OutputTextBlock.Text += "\n";
+            }
+
+            OutputTextBlock.Text += "\nWarning: your license file contains NNU licenses. Products on this license will seemingly have their seat count halved/doubled since " +
+            " each user specified gets 2 seats per product.";
         }
 
         if (errorMatches.Count != 0)
