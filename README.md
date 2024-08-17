@@ -6,5 +6,6 @@ This software is not associated with nor created by Mathworks.
 Compiled builds in the release section were compiled on the following platforms:
 - Windows 11
 - Linux
+- macOS Sonoma ARM
 
-I'll compiled macOS builds if anybody actually wants them.
+To launch the program, download the zip archive, extract its contents, and then launch "LaunchLMFOOLS".
