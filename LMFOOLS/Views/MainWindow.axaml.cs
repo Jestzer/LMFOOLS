@@ -512,10 +512,10 @@ public partial class MainWindow : Window
 
         if (_stopButtonWasJustUsed)
         {
-            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 30 seconds. This is to ensure FlexLM has fully stopped " +
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 60 seconds. This is to ensure FlexLM has fully stopped " +
                                                                    "and the desired TCP ports are opened.");
             StatusButton.IsEnabled = false;
-            await Task.Delay(30000); // Wait 30 seconds.
+            await Task.Delay(60000); // Wait 60 seconds.
         }
 
         StatusButton.IsEnabled = true;
@@ -921,6 +921,11 @@ public partial class MainWindow : Window
                             else if (last20Lines.Any(line => line.Contains("(There are no VENDOR (or DAEMON) lines in the license file)")))
                             {
                                 ShowErrorWindow("FlexLM did not start because you are missing your DAEMON line from your license file.");
+                            }
+                            else if (last20Lines.Any(line => line.Contains("((lmgrd) The TCP port number in the license, ")) && last20Lines.Any(line => line.Contains(", is already in use.")))
+                            {
+                                ShowErrorWindow("FlexLM is down. The primary port number is still in use BUT FlexLM will automatically attempt to start the server again for the next 5 minutes. " +
+                                "Please check the status again in 30 seconds.");
                             }
                             else
                             {
