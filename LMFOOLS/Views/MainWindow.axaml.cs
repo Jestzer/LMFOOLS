@@ -1178,6 +1178,7 @@ public partial class MainWindow : Window
         }
 
         bool optionsFileCannotBeUsed = false;
+        bool warningMessageDisplayed = false;
 
         if (last50Lines.Any(line => line.Contains("(MLM) CANNOT OPEN options file")) && !last50Lines.Any(line => line.Contains("options file \"License\"")))
         {
@@ -1194,9 +1195,10 @@ public partial class MainWindow : Window
 
             OutputTextBlock.Text += "\nWarning: your license file contains NNU licenses. Products on this license will seemingly have their seat count halved/doubled since " +
             "each user specified gets 2 seats per product.";
+            warningMessageDisplayed = true;
         }
 
-        if (errorMatches.Count != 0)
+        if (errorMatches.Count != 0 || warningMessageDisplayed)
         {
             OutputTextBlock.Text += "\n";
         }
