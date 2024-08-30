@@ -9,3 +9,7 @@ Compiled builds in the release section were compiled on the following platforms:
 - macOS Sonoma ARM
 
 To launch the program, download the zip archive, extract its contents, and then launch "LaunchLMFOOLS".
+
+To-do:
+- Include more hand-written error messages
+- Include helpful information for triad servers
