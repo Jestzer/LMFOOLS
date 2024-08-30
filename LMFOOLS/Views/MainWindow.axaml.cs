@@ -307,7 +307,7 @@ public partial class MainWindow : Window
                     if (fileContents.Contains("lo=IN") || fileContents.Contains("lo=DC") || fileContents.Contains("lo=CIN"))
                     {
                         ShowErrorWindow(
-                            "There is an issue with the license file: it contains an Individual or Designated Computer license.");
+                            "There is an issue with the license file: it contains an Individual, Designated Computer, or Counted Individual license.");
                         LicenseFileLocationTextBox.Text = string.Empty;
                         return;
                     }
