@@ -874,23 +874,20 @@ public partial class MainWindow : Window
 
             process.WaitForExit();
 
+            // Find out why FlexLM is down, from the log file, if necessary.
+            string fileContents;
+            using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(stream)) { fileContents = await reader.ReadToEndAsync(); }
+
+            var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
+            var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+
             // Check the exit code to determine if the command succeeded.
             if (process.ExitCode == 0)
             {
                 // The command ran, but that doesn't mean FlexLM actually stopped.
                 Console.WriteLine("The command to check FlexLM's status executed successfully.");
                 Console.WriteLine(output);
-
-                // Find out why FlexLM is down, from the log file, if necessary.
-                string fileContents;
-                using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var reader = new StreamReader(stream))
-                {
-                    fileContents = await reader.ReadToEndAsync();
-                }
-
-                var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
-                var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
                 // Complete failure to launch.
                 if (output.Contains("lmgrd is not running"))
@@ -1029,10 +1026,23 @@ public partial class MainWindow : Window
                 {
                     if (!_programWasJustLaunched)
                     {
-                        ShowErrorWindow("Failed to execute the status check command. Please check your license and log file for errors, such as (but definitely not limited to) a missing or misformatted SERVER line. " +
-                        "Additionally, please make you have permissions to execute lmgrd, MLM, and lmutil.");
+                        if (last20Lines.Any(line => line.Contains("license manager: can't initialize:Invalid license file syntax.")))
+                        {
+                            ShowErrorWindow("Failed to execute the status check command. Your license file is improperly formatted. Check the SERVER and DAEMON lines for any formatting errors. " +
+                                            "Additionally, please make you have permissions to execute lmgrd, MLM, and lmutil.");
+                            FlexLmCanStart();
+                        }
+                        else
+                        {
+                            ShowErrorWindow("Failed to execute the status check command. Please check your license and log file for errors, such as (but definitely not limited to) a missing or misformatted SERVER line. " +
+                                            "Additionally, please make you have permissions to execute lmgrd, MLM, and lmutil.");
+                            FlexLmStatusUnknown();
+                        }
                     }
-                    FlexLmStatusUnknown();
+                    else
+                    {
+                        FlexLmStatusUnknown();
+                    }
                 });
             }
         }
