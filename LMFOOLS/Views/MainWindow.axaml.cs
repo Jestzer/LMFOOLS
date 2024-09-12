@@ -1203,7 +1203,7 @@ public partial class MainWindow : Window
                 OutputTextBlock.Text += "\n";
             }
 
-            OutputTextBlock.Text += "\nWarning: your license file contains NNU licenses. Products on this license will seemingly have their seat count halved/doubled since " +
+            OutputTextBlock.Text += "\nWarning: your license file contains at least 1 NNU license. Products on an NNU license will seemingly have their seat count halved/doubled since " +
             "each user specified gets 2 seats per product.";
             warningMessageDisplayed = true;
         }
