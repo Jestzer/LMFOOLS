@@ -550,6 +550,8 @@ public partial class MainWindow : Window
             StatusButton.IsEnabled = false;
         });
     }
+    private bool wantToAttemptForcedShutdown = false;
+    private bool firstAttemptToForceShutdown = true;
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
@@ -569,6 +571,13 @@ public partial class MainWindow : Window
 
             // Perform the "actual code" asynchronously to make sure the UI message displayed first.
             await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+
+            // Let's try it again, shall we?
+            if (wantToAttemptForcedShutdown)
+            {
+                firstAttemptToForceShutdown = false;
+                await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+            }
         }
         else
         {
@@ -595,10 +604,13 @@ public partial class MainWindow : Window
         // Arguments for lmutil.
         string arguments = $"lmdown -c \"{licenseFilePath}\" -q";
 
+        if (wantToAttemptForcedShutdown)
+        { arguments = $"lmdown -c \"{licenseFilePath}\" -q -force"; }
+
         // Execute the full command!
         try
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo = new()
             {
                 FileName = lmutilPath,
                 Arguments = arguments,
@@ -608,7 +620,7 @@ public partial class MainWindow : Window
                 CreateNoWindow = true
             };
 
-            using Process process = new Process { StartInfo = startInfo };
+            using Process process = new() { StartInfo = startInfo };
             process.Start();
 
             // Read the output and error streams for debugging.
@@ -813,8 +825,11 @@ public partial class MainWindow : Window
     {
         OutputTextBlock.Text = "Loading. Please wait.";
 
-        // Hopefully increasing this to 1000 will reduce status error -16s.
-        await Task.Delay(1000);
+        if (!_stopButtonWasJustUsed)
+        {
+            // Hopefully increasing this to 1000 will reduce status error -16s.
+            await Task.Delay(1000);
+        }
 
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
@@ -824,7 +839,7 @@ public partial class MainWindow : Window
         {
             BusyWithFlexLm();
 
-            // Run the long-running code asynchronously
+            // Run the long-running code asynchronously.
             await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
         }
         else
@@ -954,6 +969,17 @@ public partial class MainWindow : Window
                 // Successfully launched.
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
                 {
+                    // Attempt to force a shutdown, if necessary, and it's our first time trying to do so.
+                    if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567:104")) && _stopButtonWasJustUsed && firstAttemptToForceShutdown)
+                    {
+                        wantToAttemptForcedShutdown = true;
+                        return;
+                    }
+                    else
+                    {
+                        wantToAttemptForcedShutdown = false;
+                    }
+
                     Dispatcher.UIThread.Post(() =>
                     {
                         OutputTextBlock.Text = "FlexLM is up!";
