@@ -572,12 +572,6 @@ public partial class MainWindow : Window
 
             // Perform the "actual code" asynchronously to make sure the UI message displayed first.
             await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
-
-            // shall we?
-            if (wantToAttemptForcedShutdown)
-            {
-                await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
-            }
         }
         else
         {
@@ -967,9 +961,11 @@ public partial class MainWindow : Window
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
                 {
                     // Attempt to force a shutdown, if necessary, and it's our first time trying to do so.
-                    if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567:104")) && _stopButtonWasJustUsed && firstAttemptToForceShutdown)
+                    if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567")) && _stopButtonWasJustUsed && firstAttemptToForceShutdown)
                     {
                         wantToAttemptForcedShutdown = true;
+                        await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+                        firstAttemptToForceShutdown = false;
                         return;
                     }
                     else
