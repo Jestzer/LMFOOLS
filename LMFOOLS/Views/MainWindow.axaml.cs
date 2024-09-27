@@ -819,8 +819,8 @@ public partial class MainWindow : Window
     {
         OutputTextBlock.Text = "Loading. Please wait.";
 
-        // Hopefully increasing this to 1000 will reduce status error -16s.
-        await Task.Delay(1000);
+        // Hopefully increasing this to 1500 will reduce status error -16s.
+        await Task.Delay(1500);
 
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
