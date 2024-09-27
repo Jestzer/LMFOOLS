@@ -556,9 +556,10 @@ public partial class MainWindow : Window
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
         _stopButtonWasJustUsed = true;
+
+        // Setup file paths to executables.
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
-        // Setup file paths to executables.
 
         if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
         {
@@ -572,10 +573,9 @@ public partial class MainWindow : Window
             // Perform the "actual code" asynchronously to make sure the UI message displayed first.
             await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
 
-            // Let's try it again, shall we?
+            // shall we?
             if (wantToAttemptForcedShutdown)
             {
-                firstAttemptToForceShutdown = false;
                 await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
             }
         }
@@ -825,11 +825,8 @@ public partial class MainWindow : Window
     {
         OutputTextBlock.Text = "Loading. Please wait.";
 
-        if (!_stopButtonWasJustUsed)
-        {
-            // Hopefully increasing this to 1000 will reduce status error -16s.
-            await Task.Delay(1000);
-        }
+        // Hopefully increasing this to 1000 will reduce status error -16s.
+        await Task.Delay(1000);
 
         string? lmutilPath = LmutilLocationTextBox.Text;
         string? licenseFilePath = LicenseFileLocationTextBox.Text;
