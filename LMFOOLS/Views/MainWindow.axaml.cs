@@ -521,7 +521,7 @@ public partial class MainWindow : Window
         StatusButton.IsEnabled = true;
         StartButton.IsEnabled = true;
         _stopButtonWasJustUsed = false;
-
+        _programWasJustLaunched = false;
     }
 
     private void FlexLmCanStop()
