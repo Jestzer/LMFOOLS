@@ -532,6 +532,14 @@ public partial class MainWindow : Window
         _programWasJustLaunched = false;
     }
 
+    private void FlexLmIsAttemptingToRestart()
+    {
+        StopButton.IsEnabled = false;
+        StartButton.IsEnabled = false;
+        StatusButton.IsEnabled = true;
+        _programWasJustLaunched = false;
+    }
+
     private void FlexLmStatusUnknown()
     {
         StartButton.IsEnabled = true;
@@ -906,14 +914,12 @@ public partial class MainWindow : Window
                     {
                         if (File.Exists(lmLogPath))
                         {
-
                             if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                             {
                                 Dispatcher.UIThread.Post(() =>
                                 {
-                                    ShowErrorWindow("FlexLM is down. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                           "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
-                                                           "Otherwise, if you're on Linux, I recommend trying TCP port 27011.");
+                                    ShowErrorWindow("FlexLM is down. lmgrd's port could not be opened. You either just recently shutdown the server and the port has not freed yet, don't have permissions to open the port, or it's being used by " +
+                                        "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. Otherwise, if you're on Linux, I recommend trying TCP port 27011.");
                                 });
                             }
                             else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")) ||
@@ -927,12 +933,12 @@ public partial class MainWindow : Window
                             }
                             else if (last20Lines.Any(line => line.Contains("((lmgrd) The TCP port number in the license, ")) && last20Lines.Any(line => line.Contains(", is already in use.")))
                             {
-                                ShowErrorWindow("FlexLM is down. The primary port number is still in use BUT FlexLM will automatically attempt to start the server again for the next 5 minutes. " +
-                                "Please check the status again in 30 seconds.");
+                                ShowErrorWindow("FlexLM is down. The primary port number is still in use. This is likely because it still needs to be freed from the server running earlier." +
+                                "Please attempt to start the server again in 30 seconds.");
                             }
                             else
                             {
-                                if (_stopButtonWasJustUsed || _programWasJustLaunched)
+                                if (_stopButtonWasJustUsed || _programWasJustLaunched || (last20Lines.Any(line => line.Contains("(lmgrd) EXITING DUE TO SIGNAL 15")) && last20Lines.Any(line => line.Contains("(MLM) daemon shutdown requested - shutting down"))))
                                 {
                                     OutputTextBlock.Text = "FlexLM is down.";
                                 }
@@ -941,7 +947,6 @@ public partial class MainWindow : Window
                                     ShowErrorWindow("FlexLM is down. Check the log file for more information.");
                                 }
                             }
-
                         }
                         else
                         {
@@ -983,52 +988,57 @@ public partial class MainWindow : Window
                 // LMGRD launched, but MLM couldn't launch. Let's see if we can find out why!
                 else if (output.Contains("license server UP (MASTER)") && !output.Contains("MLM: UP"))
                 {
-                    if (output.Contains("MLM: No socket connection to license server manager."))
+                    Dispatcher.UIThread.Post(() =>
                     {
-                        if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
+                        bool flexLmIsAttemptingRestart = false;
+
+                        if (output.Contains("MLM: No socket connection to license server manager."))
                         {
-                            Dispatcher.UIThread.Post(() =>
+
+                            if (last20Lines.Any(line => line.Contains("((lmgrd) The TCP port number in the license, ")) && last20Lines.Any(line => line.Contains(", is already in use.")) && last20Lines.Any(line => line.Contains("Retrying for about 5 more minutes")))
                             {
-                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. One of the ports could not be opened. You either don't have permissions to open the port or it's being used by " +
-                                                       "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
-                                                       "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
-                            });
-                        }
-                        else if (last20Lines.Any(line => line.Contains("MLM exited with status 36 (No features to serve)")))
-                        {
-                            Dispatcher.UIThread.Post(() =>
+                                ShowErrorWindow("FlexLM is down. The primary port number is still in use. FlexLM has recognized this and will attempt to launch the server again for the next 5 minutes." +
+                                "Please check the server's status again in 30 seconds.");
+                                flexLmIsAttemptingRestart = true;
+                            }
+                            else if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. lmgrd's port could not be opened. You either just recently shutdown the server and the port has not freed yet, " +
+                                "don't have permissions to open the port, or it's being used by something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. " +
+                                "Otherwise, if you're on Linux, I recommend trying TCP port 27011.";
+                            }
+                            else if (last20Lines.Any(line => line.Contains("MLM exited with status 36 (No features to serve)")))
                             {
                                 OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. None of the products in your license file are valid (are you using a license for a different computer?) " +
-                                                       "Check lmlog.txt in LMFOOLS's directory for more specific errors.";
-                            });
-                        }
-                        else if (last20Lines.Any(line => line.Contains("(lmgrd) MLM exited with status 2 signal = 17")))
-                        {
-                            Dispatcher.UIThread.Post(() =>
+                                "Check lmlog.txt in LMFOOLS's directory for more specific errors.";
+                            }
+                            else if (last20Lines.Any(line => line.Contains("(lmgrd) MLM exited with status 2 signal = 17")))
                             {
                                 OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. MLM is likely corrupted. Please obtain a new copy of it. " +
-                                                       "If you're using Linux, use 'unzip' instead of Ark to extract any ZIP archives with MLM in it.";
-                            });
-                        }
-                        else if (last20Lines.Any(line => line.Contains("Cannot open license file /usr/local/flexlm/licenses/license.dat")))
-                        {
-                            Dispatcher.UIThread.Post(() =>
+                                "If you're using Linux, use 'unzip' instead of Ark to extract any ZIP archives with MLM in it.";
+
+                            }
+                            else if (last20Lines.Any(line => line.Contains("Cannot open license file /usr/local/flexlm/licenses/license.dat")))
                             {
+
                                 OutputTextBlock.Text = "MLM attempted to use a license file that does not exist. Please place MLM in a directory that this program can access. " +
-                                                       "Hint: try placing it in the same directory as your license file or in a user-specific folder.";
-                            });
+                                "Hint: try placing it in the same directory as your license file or in a user-specific folder.";
+
+                            }
+                            else
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process.";
+                            }
                         }
                         else
                         {
-                            Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
+                            OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process.";
                         }
-                    }
-                    else
-                    {
-                        Dispatcher.UIThread.Post(() => { OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. Please press the Stop button or manually end the process."; });
-                    }
 
-                    Dispatcher.UIThread.Post(FlexLmCanStop);
+                        if (!flexLmIsAttemptingRestart)
+                        { FlexLmCanStop(); }
+                        else { FlexLmIsAttemptingToRestart(); }
+                    });
                 }
                 // We will assume nothing if we can't definitively tell its status.
                 else
