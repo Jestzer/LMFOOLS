@@ -1012,6 +1012,11 @@ public partial class MainWindow : Window
                                 OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. None of the products in your license file are valid (are you using a license for a different computer?) " +
                                 "Check lmlog.txt in LMFOOLS's directory for more specific errors.";
                             }
+                            else if (last20Lines.Any(line => line.Contains("MLM exited with status 27 (No features to serve)")))
+                            {
+                                OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. This could be caused by a syntax error in the license file, MLM's port is being used by something else (likely another instance of MLM), " +
+                                "the license file has expired/the system clock is set incorrectly, or you combined the Enterprise and non-Enterprise license manager installation files into 1 folder.";
+                            }
                             else if (last20Lines.Any(line => line.Contains("(lmgrd) MLM exited with status 2 signal = 17")))
                             {
                                 OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. MLM is likely corrupted. Please obtain a new copy of it. " +
