@@ -14,9 +14,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
-using LMFOOLS.ViewModels;
+using LMFOOLS_Project.ViewModels;
 
-namespace LMFOOLS.Views;
+namespace LMFOOLS_Project.Views;
 
 public partial class MainWindow : Window
 {
