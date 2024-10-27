@@ -1,10 +1,10 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using LMFOOLS.ViewModels;
-using LMFOOLS.Views;
+using LMFOOLS_Project.ViewModels;
+using LMFOOLS_Project.Views;
 
-namespace LMFOOLS;
+namespace LMFOOLS_Project;
 
 public partial class App : Application
 {

@@ -4,11 +4,11 @@
         <TrimMode>link</TrimMode>
         <SelfContained>true</SelfContained>
         <PublishAot>true</PublishAot>
-        <AssemblyName>LaunchLMFOOLS</AssemblyName>
+        <AssemblyName>LMFOOLS</AssemblyName>
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-        <ApplicationIcon>..\LMFOOLS\Assets\icon.ico</ApplicationIcon>
+        <ApplicationIcon>..\LMFOOLS_Project\Assets\icon.ico</ApplicationIcon>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -25,6 +25,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\LMFOOLS\LMFOOLS.csproj" />
+        <ProjectReference Include="..\LMFOOLS_Project\LMFOOLS_Project.csproj" />
     </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-namespace LMFOOLS;
+namespace LMFOOLS_Project;
 
 public class Settings
 {
