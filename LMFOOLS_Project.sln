@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LMFOOLS", "LMFOOLS\LMFOOLS.csproj", "{1EAD00A6-D2BA-44A7-A092-70B5DF37C374}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LMFOOLS_Project", "LMFOOLS_Project\LMFOOLS_Project.csproj", "{1EAD00A6-D2BA-44A7-A092-70B5DF37C374}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LMFOOLS.Desktop", "LMFOOLS.Desktop\LMFOOLS.Desktop.csproj", "{356A9739-FDC4-4945-84C0-F6DFE480F33C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LMFOOLS_Project.Desktop", "LMFOOLS_Project.Desktop\LMFOOLS_Project.Desktop.csproj", "{356A9739-FDC4-4945-84C0-F6DFE480F33C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

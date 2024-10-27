@@ -4,7 +4,7 @@ using System.Text.Json;
 using System;
 using Avalonia.Interactivity;
 
-namespace LMFOOLS.Views;
+namespace LMFOOLS_Project.Views;
 
 public partial class UpdateWindow : Window
 {

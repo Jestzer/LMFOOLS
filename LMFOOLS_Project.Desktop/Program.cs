@@ -1,7 +1,7 @@
 ﻿using System;
 using Avalonia;
 
-namespace LMFOOLS.Desktop;
+namespace LMFOOLS_Project.Desktop;
 
 sealed class Program
 {

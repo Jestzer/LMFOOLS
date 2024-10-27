@@ -1,4 +1,4 @@
-﻿namespace LMFOOLS.ViewModels;
+﻿namespace LMFOOLS_Project.ViewModels;
 
 public class MainViewModel : ViewModelBase
 {

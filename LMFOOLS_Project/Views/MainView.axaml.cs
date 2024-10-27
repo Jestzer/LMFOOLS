@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 
-namespace LMFOOLS.Views;
+namespace LMFOOLS_Project.Views;
 
 public partial class MainView : UserControl
 {

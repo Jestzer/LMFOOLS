@@ -1,6 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-namespace LMFOOLS.Views;
+namespace LMFOOLS_Project.Views;
 
 public partial class ErrorWindow : Window
 {
