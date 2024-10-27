@@ -13,4 +13,3 @@ To launch the program, download the zip archive, extract its contents, and then 
 To-do:
 - Include more hand-written error messages
 - Include helpful information for triad servers
-- Change project name so that the executable can be named just LMFOOLS
