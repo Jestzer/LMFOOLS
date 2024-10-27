@@ -8,7 +8,7 @@ Compiled builds in the release section were compiled on the following platforms:
 - Linux
 - macOS Sonoma ARM
 
-To launch the program, download the zip archive, extract its contents, and then launch "LaunchLMFOOLS".
+To launch the program, download the zip archive, extract its contents, and then launch "LMFOOLS".
 
 To-do:
 - Include more hand-written error messages
