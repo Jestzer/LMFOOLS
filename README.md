@@ -13,3 +13,4 @@ To launch the program, download the zip archive, extract its contents, and then 
 To-do:
 - Include more hand-written error messages
 - Include helpful information for triad servers
+- Have a thread that checks to see if the desired ports are opened and that will allow the start button to be used again, rather than waiting 60 seconds which is often unnecessary on Windows, at least.
