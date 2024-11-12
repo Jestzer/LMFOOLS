@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -21,6 +23,9 @@ namespace LMFOOLS_Project.Views;
 public partial class MainWindow : Window
 {
     private bool _programWasJustLaunched = true;
+
+    [GeneratedRegex(@"(?i)port=(\d+)", RegexOptions.None, "en-US")]
+    private static partial Regex daemonPortRegex();
 
     public MainWindow()
     {
@@ -51,6 +56,8 @@ public partial class MainWindow : Window
     }
 
     private static readonly char[] LineSeparator = ['\r', '\n'];
+    private static ushort serverPort = 0;
+    private static ushort daemonPort = 0;
 
     // Figure out your platform.
     readonly OSPlatform _platform = GetOperatingSystemPlatform();
@@ -271,29 +278,30 @@ public partial class MainWindow : Window
 
             // Open the file dialog and await for the user's response.
             var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
-            if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
+            if (!result.Any()) return;
+            var selectedFile = result[0];
             {
-                var selectedFile = result[0];
-                if (selectedFile != null)
+                // Get file properties.
+                var properties = await selectedFile.GetBasicPropertiesAsync();
+                if (properties.Size != null)
                 {
-                    // Read the file contents.
+                    long fileSizeInBytes = (long)properties.Size;
+                    const long fiftyMegabytes = 50L * 1024L * 1024L;
+
+                    // Check the file size.
+                    if (fileSizeInBytes > fiftyMegabytes)
+                    {
+                        ShowErrorWindow("There is an issue with the license file: it is over 50 MB and therefore, (hopefully) not a license file.");
+                        LicenseFileLocationTextBox.Text = string.Empty;
+                        return;
+                    }
+
+                    // If size is within the limit, read the contents.
                     string fileContents;
-                    using (var stream = await selectedFile.OpenReadAsync())
+                    await using (var stream = await selectedFile.OpenReadAsync())
                     using (var reader = new StreamReader(stream))
                     {
                         fileContents = await reader.ReadToEndAsync();
-                    }
-
-                    // Check the file size indirectly via its content length.
-                    long fileSizeInBytes = fileContents.Length;
-                    const long fiftyMegabytes = 50L * 1024L * 1024L;
-
-                    if (fileSizeInBytes > fiftyMegabytes)
-                    {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it is over 50 MB and therefore, likely (hopefully) not a license file.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
                     }
 
                     if (!fileContents.Contains("INCREMENT"))
@@ -331,6 +339,11 @@ public partial class MainWindow : Window
                     // Gotta convert some things, ya know?
                     var rawFilePath = selectedFile.TryGetLocalPath;
                     string? filePath = rawFilePath();
+
+                    if (filePath != null)
+                    {
+                        GetServerPort(filePath);
+                    }
 
                     LicenseFileLocationTextBox.Text = filePath;
                 }
@@ -512,10 +525,11 @@ public partial class MainWindow : Window
 
         if (_stopButtonWasJustUsed)
         {
-            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 60 seconds. This is to ensure FlexLM has fully stopped " +
-                                                                   "and the desired TCP ports are opened.");
+            Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use when the 2 ports you specified become available. " +
+            "If you did not a specify a port number on your SERVER and DAEMON line, then this check will be skipped since ports used will be random.");
+
             StatusButton.IsEnabled = false;
-            await Task.Delay(60000); // Wait 60 seconds.
+            if (serverPort != 0 && daemonPort != 0) { await Task.Run(() => CheckIfPortsAreBeingUsed(serverPort, daemonPort)); }
         }
 
         StatusButton.IsEnabled = true;
@@ -863,6 +877,9 @@ public partial class MainWindow : Window
             return;
         }
 
+        // ... hey, really quickly, can we grab your port numbers?
+        GetServerPort(licenseFilePath);
+
         // Arguments for lmutil.
         string arguments = $"lmstat -c \"{licenseFilePath}\" -a";
 
@@ -914,38 +931,45 @@ public partial class MainWindow : Window
                     {
                         if (File.Exists(lmLogPath))
                         {
-                            if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
+                            if (!_programWasJustLaunched)
                             {
-                                Dispatcher.UIThread.Post(() =>
+                                if (last20Lines.Any(line => line.Contains("Failed to open the TCP port number in the license.")))
                                 {
-                                    ShowErrorWindow("FlexLM is down. lmgrd's port could not be opened. You either just recently shutdown the server and the port has not freed yet, don't have permissions to open the port, or it's being used by " +
-                                        "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. Otherwise, if you're on Linux, I recommend trying TCP port 27011.");
-                                });
-                            }
-                            else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")) ||
-                            (last20Lines.Any(line => line.Contains("Unknown Hostname: ")) && last20Lines.Any(line => line.Contains("license file is not available in the local network database"))))
-                            {
-                                ShowErrorWindow("FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.");
-                            }
-                            else if (last20Lines.Any(line => line.Contains("(There are no VENDOR (or DAEMON) lines in the license file)")))
-                            {
-                                ShowErrorWindow("FlexLM did not start because you are missing your DAEMON line from your license file.");
-                            }
-                            else if (last20Lines.Any(line => line.Contains("((lmgrd) The TCP port number in the license, ")) && last20Lines.Any(line => line.Contains(", is already in use.")))
-                            {
-                                ShowErrorWindow("FlexLM is down. The primary port number is still in use. This is likely because it still needs to be freed from the server running earlier." +
-                                "Please attempt to start the server again in 30 seconds.");
-                            }
-                            else
-                            {
-                                if (_stopButtonWasJustUsed || _programWasJustLaunched || (last20Lines.Any(line => line.Contains("(lmgrd) EXITING DUE TO SIGNAL 15")) && last20Lines.Any(line => line.Contains("(MLM) daemon shutdown requested - shutting down"))))
+                                    Dispatcher.UIThread.Post(() =>
+                                    {
+                                        ShowErrorWindow("FlexLM is down. lmgrd's port could not be opened. You either just recently shutdown the server and the port has not freed yet, don't have permissions to open the port, or it's being used by " +
+                                            "something else. You might need to just wait longer for the desired ports to reopen if you just stopped FlexLM. Otherwise, if you're on Linux, I recommend trying TCP port 27011.");
+                                    });
+                                }
+                                else if (last20Lines.Any(line => line.Contains("Not a valid server hostname, exiting.")) ||
+                                (last20Lines.Any(line => line.Contains("Unknown Hostname: ")) && last20Lines.Any(line => line.Contains("license file is not available in the local network database"))))
                                 {
-                                    OutputTextBlock.Text = "FlexLM is down.";
+                                    ShowErrorWindow("FlexLM is down. The hostname you've specified in your license file's SERVER line is invalid.");
+                                }
+                                else if (last20Lines.Any(line => line.Contains("(There are no VENDOR (or DAEMON) lines in the license file)")))
+                                {
+                                    ShowErrorWindow("FlexLM did not start because you are missing your DAEMON line from your license file.");
+                                }
+                                else if (last20Lines.Any(line => line.Contains("((lmgrd) The TCP port number in the license, ")) && last20Lines.Any(line => line.Contains(", is already in use.")))
+                                {
+                                    ShowErrorWindow("FlexLM is down. The primary port number is still in use. This is likely because it still needs to be freed from the server running earlier." +
+                                    "Please attempt to start the server again in 30 seconds.");
                                 }
                                 else
                                 {
-                                    ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                                    if (_stopButtonWasJustUsed || _programWasJustLaunched || (last20Lines.Any(line => line.Contains("(lmgrd) EXITING DUE TO SIGNAL 15")) && last20Lines.Any(line => line.Contains("(MLM) daemon shutdown requested - shutting down"))))
+                                    {
+                                        OutputTextBlock.Text = "FlexLM is down.";
+                                    }
+                                    else
+                                    {
+                                        ShowErrorWindow("FlexLM is down. Check the log file for more information.");
+                                    }
                                 }
+                            }
+                            else
+                            {
+                                OutputTextBlock.Text = "FlexLM is down.";
                             }
                         }
                         else
@@ -1268,5 +1292,169 @@ public partial class MainWindow : Window
                 OutputTextBlock.Text += formattedOutputText;
             }
         }
+    }
+
+    private static bool CheckIfPortsAreBeingUsed(ushort serverPort, ushort daemonPort)
+    {
+        bool serverPortIsAvailable = false;
+        bool daemonPortIsAvailable = false;
+        while (!serverPortIsAvailable && !daemonPortIsAvailable)
+        {
+            try
+            {
+                using var tcpListener = new TcpListener(IPAddress.Any, serverPort);
+                tcpListener.Start();
+                tcpListener.Stop();
+                serverPortIsAvailable = true; // Port is available.
+            }
+            catch (SocketException)
+            {
+                // Port is in use.
+            }
+
+            try
+            {
+                using var tcpListener = new TcpListener(IPAddress.Any, daemonPort);
+                tcpListener.Start();
+                tcpListener.Stop();
+                daemonPortIsAvailable = true; // Port is available.
+            }
+            catch (SocketException)
+            {
+                // Port is in use.
+            }
+        }
+        return true;
+    }
+
+    private void GetServerPort(string licenseFilePath)
+    {
+        // License file information gathering.
+        string[] licenseFileContentsLines = System.IO.File.ReadAllLines(licenseFilePath);
+        string licenseFileContents = string.Join(Environment.NewLine, licenseFileContentsLines);
+
+        // Remove line breaks.
+        string lineBreaksToRemove = "\\\r\n";
+        licenseFileContents = licenseFileContents.Replace(lineBreaksToRemove, string.Empty);
+
+        lineBreaksToRemove = "\\\n";
+        licenseFileContents = licenseFileContents.Replace(lineBreaksToRemove, string.Empty);
+
+        // Put it back together!
+        licenseFileContentsLines = licenseFileContents.Split([Environment.NewLine], StringSplitOptions.None);
+
+        for (int licenseLineIndex = 0; licenseLineIndex < licenseFileContentsLines.Length; licenseLineIndex++)
+        {
+            string line = licenseFileContentsLines[licenseLineIndex];
+            if (line.TrimStart().StartsWith("SERVER"))
+            {
+                string[] lineParts = line.Split(' ');
+                string serverWord = lineParts[0];
+                string serverHostID = lineParts[2];
+
+                if (serverHostID == "27000" || serverHostID == "27001" || serverHostID == "27002" || serverHostID == "27003" || serverHostID == "27004" || serverHostID == "27005")
+                {
+                    ShowErrorWindow("There is an issue with the license file: you have likely omitted your Host ID and attempted to specify a SERVER port number. " +
+                        "Because you have omitted the Host ID, the port you've attempted to specify will not be used.");
+                    return;
+                }
+
+                if (lineParts.Length < 3)
+                {
+                    ShowErrorWindow("There is an issue with the license file: you are missing information from your SERVER line.");
+                    return;
+                }
+                else if (lineParts.Length == 3)
+                {
+                    serverPort = 0;
+                }
+                else if (lineParts.Length == 4)
+                {
+                    // Check to make sure you're using a port number.
+                    if (!ushort.TryParse(lineParts[3], out serverPort))
+                    {
+                        ShowErrorWindow("There is an issue with the license file: you have stray information on your SERVER line.");
+                        return;
+                    }
+
+                    if (serverWord != "SERVER")
+                    {
+                        ShowErrorWindow("There is an issue with the license file: it does not start with the word SERVER.");
+                        return;
+                    }
+
+                    if (!serverHostID.Contains("INTERNET=") && serverHostID.Length != 12)
+                    {
+                        ShowErrorWindow("There is an issue with the license file: you have not specified your Host ID correctly.");
+                        return;
+                    }
+
+                    // Congrats, you /may/ have not made any mistakes on your SERVER line.
+                }
+                else if (lineParts.Length == 5)
+                {
+                    if (lineParts[4] == "")
+                    {
+                        serverPort = 0; // Your stray space shall be ignored... this time.
+                    }
+                    else
+                    {
+                        ShowErrorWindow("There is an issue with the license file: you have stray information on your SERVER line.");
+                        return;
+                    }
+                }
+                else
+                {
+                    ShowErrorWindow("There is an issue with the license file: you have stray information on your SERVER line.");
+                    return;
+                }
+            }
+            else if (line.TrimStart().StartsWith("DAEMON") || line.TrimStart().StartsWith("VENDOR"))
+            {
+                // daemonProperty1 and 2 could either be a port number or path to an options file.
+                string[] lineParts = line.Split(' ');
+
+                // Just having the word "DAEMON" isn't enough.
+                if (lineParts.Length == 1)
+                {
+                    ShowErrorWindow("There is an issue with the license file: you have a DAEMON line, but did not specify the daemon to be used (MLM) nor the path to it.");
+                    return;
+                }
+
+                // Checking for the vendor daemon MLM.
+                string daemonVendor = lineParts[1];
+
+                if (string.IsNullOrWhiteSpace(daemonVendor))
+                {
+                    ShowErrorWindow("There is an issue with the license file: there are too many spaces between \"DAEMON\" and \"MLM\".");
+                    return;
+                }
+
+                // The vendor daemon needs to MLM. Not mlm or anything else.
+                if (daemonVendor != "MLM")
+                {
+                    ShowErrorWindow("There is an issue with the license file: you have incorrectly specified the vendor daemon MLM.");
+                    return;
+                }
+
+                // Just specifying "DAEMON MLM" isn't enough.
+                if (lineParts.Length == 2)
+                {
+                    ShowErrorWindow("There is an issue with the license file: you did not specify the path to the vendor daemon MLM.");
+                    return;
+                }
+
+                // You're missing your options file path.
+                if (lineParts.Length == 3)
+                {
+                    ShowErrorWindow("There is an issue with the license file: you did not specify the path to the options file.");
+                    return;
+                }
+
+                var match = daemonPortRegex().Match(line);
+                _ = match.Success && ushort.TryParse(match.Groups[1].Value, out daemonPort);
+            }
+        }
+        return;
     }
 }
