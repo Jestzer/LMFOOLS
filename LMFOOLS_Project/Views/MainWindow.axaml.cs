@@ -531,9 +531,9 @@ public partial class MainWindow : Window
             }
             else // macOS and Linux seem to take longer. The time below doesn't guarantee anything, but it'll hopefully do the trick most of the time.
             {
-                Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 20 seconds. This is to ensure FlexLM has fully stopped " +
+                Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 30 seconds. This is to ensure FlexLM has fully stopped " +
                 "and the desired TCP ports are opened.");
-                await Task.Delay(20000); // Wait 20 seconds.
+                await Task.Delay(20000); // Wait 30 seconds.
             }
         }
 
