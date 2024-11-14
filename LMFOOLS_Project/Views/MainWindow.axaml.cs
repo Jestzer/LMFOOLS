@@ -21,10 +21,7 @@ namespace LMFOOLS_Project.Views;
 public partial class MainWindow : Window
 {
     private bool _programWasJustLaunched = true;
-
-    [GeneratedRegex(@"(?i)port=(\d+)", RegexOptions.None, "en-US")]
-    private static partial Regex daemonPortRegex();
-
+    
     public MainWindow()
     {
         InitializeComponent();
@@ -133,7 +130,7 @@ public partial class MainWindow : Window
     [JsonSerializable(typeof(Settings))]
     internal partial class SettingsJsonContext : JsonSerializerContext { }
 
-    public static (string settingsPath, string lmLogPath) DeterminePaths()
+    private static (string settingsPath, string lmLogPath) DeterminePaths()
     {
         string settingsPath;
         string lmLogPath;
@@ -172,13 +169,13 @@ public partial class MainWindow : Window
         return (settingsPath, lmLogPath);
     }
 
-    public static string SettingsPath()
+    private static string SettingsPath()
     {
         var (settingsPath, _) = DeterminePaths();
         return settingsPath;
     }
 
-    public static string LmLogPath()
+    private static string LmLogPath()
     {
         var (_, lmLogPath) = DeterminePaths();
         return lmLogPath;
@@ -233,278 +230,314 @@ public partial class MainWindow : Window
 
     private async void ShowErrorWindow(string errorMessage)
     {
-        OutputTextBlock.Text = errorMessage;
-        ErrorWindow errorWindow = new();
-        errorWindow.ErrorTextBlock.Text = errorMessage;
+        try
+        {
+            OutputTextBlock.Text = errorMessage;
+            ErrorWindow errorWindow = new();
+            errorWindow.ErrorTextBlock.Text = errorMessage;
 
-        // Check if VisualRoot is not null and is a Window before casting
-        if (this.VisualRoot is Window window)
-        {
-            await errorWindow.ShowDialog(window);
+            // Check if VisualRoot is not null and is a Window before casting
+            if (VisualRoot is Window window)
+            {
+                await errorWindow.ShowDialog(window);
+            }
+            else
+            {
+                OutputTextBlock.Text = "The error window broke somehow. Please make an issue for this in GitHub.";
+            }
         }
-        else
+        catch (Exception ex)
         {
-            OutputTextBlock.Text = "The error window broke somehow. Please make an issue for this in GitHub.";
+            OutputTextBlock.Text = "In an attempt to show the Error Window, an error occurred. " +
+            $"This is the automatic error message that was generated: {ex.Message}";
         }
     }
 
     private async void CheckForUpdateButton_Click(object sender, RoutedEventArgs e)
     {
-        var updateWindow = new UpdateWindow();
+        try
+        {
+            var updateWindow = new UpdateWindow();
 
-        await updateWindow.ShowDialog(this); // Putting this here, otherwise it won't center it on the MainWindow. Sorryyyyy.
+            await updateWindow.ShowDialog(this); // Putting this here, otherwise it won't center it on the MainWindow. Sorryyyyy.
+        }
+        catch (Exception ex)
+        {
+            ShowErrorWindow($"An error occurred when attempting to check for updates. Here is the automatic error message: {ex.Message}");
+        }
     }
 
     private async void LicenseFileBrowseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
+        try
         {
-            var mainWindow = desktop.MainWindow;
-
-            var filePickerOptions = new FilePickerOpenOptions
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
             {
-                Title = "Select a license file",
-                AllowMultiple = false,
-                FileTypeFilter =
-                [
-                    new FilePickerFileType("License Files") { Patterns = ["*.lic", "*.dat"] },
-                    new FilePickerFileType("All Files") { Patterns = ["*"] }
-                ]
-            };
+                var mainWindow = desktop.MainWindow;
 
-            // Open the file dialog and await for the user's response.
-            var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
-            if (!result.Any()) return;
-            var selectedFile = result[0];
-            {
-                // Get file properties.
-                var properties = await selectedFile.GetBasicPropertiesAsync();
-                if (properties.Size != null)
+                var filePickerOptions = new FilePickerOpenOptions
                 {
-                    long fileSizeInBytes = (long)properties.Size;
-                    const long fiftyMegabytes = 50L * 1024L * 1024L;
+                    Title = "Select a license file",
+                    AllowMultiple = false,
+                    FileTypeFilter =
+                    [
+                        new FilePickerFileType("License Files") { Patterns = ["*.lic", "*.dat"] },
+                        new FilePickerFileType("All Files") { Patterns = ["*"] }
+                    ]
+                };
 
-                    // Check the file size.
-                    if (fileSizeInBytes > fiftyMegabytes)
+                // Open the file dialog and await for the user's response.
+                var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
+                if (!result.Any()) return;
+                var selectedFile = result[0];
+                {
+                    // Get file properties.
+                    var properties = await selectedFile.GetBasicPropertiesAsync();
+                    if (properties.Size != null)
                     {
-                        ShowErrorWindow("There is an issue with the license file: it is over 50 MB and therefore, (hopefully) not a license file.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
+                        long fileSizeInBytes = (long)properties.Size;
+                        const long fiftyMegabytes = 50L * 1024L * 1024L;
+
+                        // Check the file size.
+                        if (fileSizeInBytes > fiftyMegabytes)
+                        {
+                            ShowErrorWindow("There is an issue with the license file: it is over 50 MB and therefore, (hopefully) not a license file.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+
+                        // If size is within the limit, read the contents.
+                        string fileContents;
+                        await using (var stream = await selectedFile.OpenReadAsync())
+                        using (var reader = new StreamReader(stream))
+                        {
+                            fileContents = await reader.ReadToEndAsync();
+                        }
+
+                        if (!fileContents.Contains("INCREMENT"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with the license file: it is either not a license file or it is corrupted.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+
+                        if (fileContents.Contains("lo=IN") || fileContents.Contains("lo=DC") || fileContents.Contains("lo=CIN"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with the license file: it contains an Individual, Designated Computer, or Counted Individual license.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+
+                        if (fileContents.Contains("CONTRACT_ID="))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with the license file: it contains at least 1 non-MathWorks product.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+
+                        if (!fileContents.Contains("SERVER") || !fileContents.Contains("DAEMON"))
+                        {
+                            ShowErrorWindow(
+                                "There is an issue with the license file: it is missing the SERVER and/or DAEMON line.");
+                            LicenseFileLocationTextBox.Text = string.Empty;
+                            return;
+                        }
+
+                        // Gotta convert some things, ya know?
+                        var rawFilePath = selectedFile.TryGetLocalPath;
+                        string? filePath = rawFilePath();
+
+                        LicenseFileLocationTextBox.Text = filePath;
                     }
-
-                    // If size is within the limit, read the contents.
-                    string fileContents;
-                    await using (var stream = await selectedFile.OpenReadAsync())
-                    using (var reader = new StreamReader(stream))
-                    {
-                        fileContents = await reader.ReadToEndAsync();
-                    }
-
-                    if (!fileContents.Contains("INCREMENT"))
-                    {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it is either not a license file or it is corrupted.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    if (fileContents.Contains("lo=IN") || fileContents.Contains("lo=DC") || fileContents.Contains("lo=CIN"))
-                    {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it contains an Individual, Designated Computer, or Counted Individual license.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    if (fileContents.Contains("CONTRACT_ID="))
-                    {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it contains at least 1 non-MathWorks product.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    if (!fileContents.Contains("SERVER") || !fileContents.Contains("DAEMON"))
-                    {
-                        ShowErrorWindow(
-                            "There is an issue with the license file: it is missing the SERVER and/or DAEMON line.");
-                        LicenseFileLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    // Gotta convert some things, ya know?
-                    var rawFilePath = selectedFile.TryGetLocalPath;
-                    string? filePath = rawFilePath();
-
-                    LicenseFileLocationTextBox.Text = filePath;
                 }
             }
+            else
+            {
+                ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            ShowErrorWindow($"An error occurred when attempting to browse for a license file. Here is the automatic error message: {ex.Message}");
         }
     }
 
     private async void LmgrdBrowseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
+        try
         {
-            var mainWindow = desktop.MainWindow;
-
-            var filePickerOptions = new FilePickerOpenOptions
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
             {
-                Title = "Select lmgrd",
-                AllowMultiple = false,
-                FileTypeFilter =
-                [
-                    new FilePickerFileType("lmgrd executable") { Patterns = ["lmgr*"] },
-                    new FilePickerFileType("All Files") { Patterns = ["*"] }
-                ]
-            };
+                var mainWindow = desktop.MainWindow;
 
-            // Open the file dialog.
-            var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
-
-            if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
-            {
-                var selectedFile = result[0];
-                if (selectedFile != null)
+                var filePickerOptions = new FilePickerOpenOptions
                 {
-                    // Read the file contents.
-                    string fileContents;
-                    using (var stream = await selectedFile.OpenReadAsync())
-                    using (var reader = new StreamReader(stream))
+                    Title = "Select lmgrd",
+                    AllowMultiple = false,
+                    FileTypeFilter =
+                    [
+                        new FilePickerFileType("lmgrd executable") { Patterns = ["lmgr*"] },
+                        new FilePickerFileType("All Files") { Patterns = ["*"] }
+                    ]
+                };
+
+                // Open the file dialog.
+                var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
+
+                if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
+                {
+                    var selectedFile = result[0];
+                    if (selectedFile != null)
                     {
-                        fileContents = await reader.ReadToEndAsync();
-                    }
-
-                    // Check the file size indirectly via its content length.
-                    long fileSizeInBytes = fileContents.Length;
-                    const long twoMegabytes = 4L * 1024L * 1024L;
-
-                    if (fileSizeInBytes > twoMegabytes)
-                    {
-                        ShowErrorWindow("Error: the selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
-                        LmgrdLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(fileContents))
-                    {
-                        ShowErrorWindow("Error: there is an issue with lmgrd: it is either empty or is read-only.");
-                        LmgrdLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    // Gotta convert some things, ya know?
-                    var rawFilePath = selectedFile.TryGetLocalPath;
-                    string? filePath = rawFilePath();
-
-                    if (filePath != null)
-                    {
-                        if (filePath.EndsWith("lmutil") || filePath.EndsWith("lmutil.exe"))
+                        // Read the file contents.
+                        string fileContents;
+                        using (var stream = await selectedFile.OpenReadAsync())
+                        using (var reader = new StreamReader(stream))
                         {
-                            ShowErrorWindow("Error: you selected lmutil instead of lmgrd.");
+                            fileContents = await reader.ReadToEndAsync();
+                        }
+
+                        // Check the file size indirectly via its content length.
+                        long fileSizeInBytes = fileContents.Length;
+                        const long twoMegabytes = 4L * 1024L * 1024L;
+
+                        if (fileSizeInBytes > twoMegabytes)
+                        {
+                            ShowErrorWindow("Error: the selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
-                        else if (!filePath.EndsWith("lmgrd") && !filePath.EndsWith("lmgrd.exe"))
+
+                        if (string.IsNullOrWhiteSpace(fileContents))
                         {
-                            ShowErrorWindow("Error: you selected a file other than lmgrd.");
+                            ShowErrorWindow("Error: there is an issue with lmgrd: it is either empty or is read-only.");
                             LmgrdLocationTextBox.Text = string.Empty;
                             return;
                         }
-                    }
 
-                    LmgrdLocationTextBox.Text = filePath;
+                        // Gotta convert some things, ya know?
+                        var rawFilePath = selectedFile.TryGetLocalPath;
+                        string? filePath = rawFilePath();
+
+                        if (filePath != null)
+                        {
+                            if (filePath.EndsWith("lmutil") || filePath.EndsWith("lmutil.exe"))
+                            {
+                                ShowErrorWindow("Error: you selected lmutil instead of lmgrd.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
+                            else if (!filePath.EndsWith("lmgrd") && !filePath.EndsWith("lmgrd.exe"))
+                            {
+                                ShowErrorWindow("Error: you selected a file other than lmgrd.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
+                        }
+
+                        LmgrdLocationTextBox.Text = filePath;
+                    }
                 }
             }
+            else
+            {
+                ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            ShowErrorWindow($"An error occurred when attempting to browse for lmgrd. Here is the automatic error message: {ex.Message}");
         }
     }
 
     private async void LmutilBrowseButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
+        try
         {
-            var mainWindow = desktop.MainWindow;
-
-            var filePickerOptions = new FilePickerOpenOptions
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: not null } desktop)
             {
-                Title = "Select lmutil",
-                AllowMultiple = false,
-                FileTypeFilter =
-                [
-                    new FilePickerFileType("lmutil") { Patterns = ["lmu*"] },
-                    new FilePickerFileType("All Files") { Patterns = ["*"] }
-                ]
-            };
+                var mainWindow = desktop.MainWindow;
 
-            // Open the file dialog.
-            var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
-
-            if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
-            {
-                var selectedFile = result[0];
-                if (selectedFile != null)
+                var filePickerOptions = new FilePickerOpenOptions
                 {
-                    // Read the file contents.
-                    string fileContents;
-                    using (var stream = await selectedFile.OpenReadAsync())
-                    using (var reader = new StreamReader(stream))
+                    Title = "Select lmutil",
+                    AllowMultiple = false,
+                    FileTypeFilter =
+                    [
+                        new FilePickerFileType("lmutil") { Patterns = ["lmu*"] },
+                        new FilePickerFileType("All Files") { Patterns = ["*"] }
+                    ]
+                };
+
+                // Open the file dialog.
+                var result = await mainWindow.StorageProvider.OpenFilePickerAsync(filePickerOptions);
+
+                if (result != null && result.Any()) // No, Rider, this is not always true because it's possible for a file to not be picked.
+                {
+                    var selectedFile = result[0];
+                    if (selectedFile != null)
                     {
-                        fileContents = await reader.ReadToEndAsync();
-                    }
-
-                    // Check the file size indirectly via its content length.
-                    long fileSizeInBytes = fileContents.Length;
-                    const long twoMegabytes = 4L * 1024L * 1024L;
-
-                    if (fileSizeInBytes > twoMegabytes)
-                    {
-                        ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
-                        LmutilLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(fileContents))
-                    {
-                        ShowErrorWindow("There is an issue with lmutil: it is either empty or is read-only.");
-                        LmutilLocationTextBox.Text = string.Empty;
-                        return;
-                    }
-
-                    // Gotta convert some things, ya know?
-                    var rawFilePath = selectedFile.TryGetLocalPath;
-                    string? filePath = rawFilePath();
-
-                    if (filePath != null)
-                    {
-                        if (filePath.EndsWith("lmgrd") || filePath.EndsWith("lmgrd.exe"))
+                        // Read the file contents.
+                        string fileContents;
+                        using (var stream = await selectedFile.OpenReadAsync())
+                        using (var reader = new StreamReader(stream))
                         {
-                            ShowErrorWindow("Error: you selected lmgrd instead of lmutil.");
-                            LmgrdLocationTextBox.Text = string.Empty;
+                            fileContents = await reader.ReadToEndAsync();
+                        }
+
+                        // Check the file size indirectly via its content length.
+                        long fileSizeInBytes = fileContents.Length;
+                        const long twoMegabytes = 4L * 1024L * 1024L;
+
+                        if (fileSizeInBytes > twoMegabytes)
+                        {
+                            ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
+                            LmutilLocationTextBox.Text = string.Empty;
                             return;
                         }
-                        else if (!filePath.EndsWith("lmutil") && !filePath.EndsWith("lmutil.exe"))
+
+                        if (string.IsNullOrWhiteSpace(fileContents))
                         {
-                            ShowErrorWindow("Error: you selected a file other than lmutil.");
-                            LmgrdLocationTextBox.Text = string.Empty;
+                            ShowErrorWindow("There is an issue with lmutil: it is either empty or is read-only.");
+                            LmutilLocationTextBox.Text = string.Empty;
                             return;
                         }
-                    }
 
-                    LmutilLocationTextBox.Text = filePath;
+                        // Gotta convert some things, ya know?
+                        var rawFilePath = selectedFile.TryGetLocalPath;
+                        string? filePath = rawFilePath();
+
+                        if (filePath != null)
+                        {
+                            if (filePath.EndsWith("lmgrd") || filePath.EndsWith("lmgrd.exe"))
+                            {
+                                ShowErrorWindow("Error: you selected lmgrd instead of lmutil.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
+                            else if (!filePath.EndsWith("lmutil") && !filePath.EndsWith("lmutil.exe"))
+                            {
+                                ShowErrorWindow("Error: you selected a file other than lmutil.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
+                        }
+
+                        LmutilLocationTextBox.Text = filePath;
+                    }
                 }
             }
+            else
+            {
+                ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("idk man, you really broke something. Make an issue on GitHub for this.");
+            ShowErrorWindow($"An error occurred when attempting to browse for lmutil. Here is the automatic error message: {ex.Message}");
         }
     }
 
@@ -512,35 +545,42 @@ public partial class MainWindow : Window
 
     private async void FlexLmCanStart()
     {
-        StopButton.IsEnabled = false;
-
-        if (_stopButtonWasJustUsed)
+        try
         {
-            StatusButton.IsEnabled = false;
+            StopButton.IsEnabled = false;
 
-            // At one point, I tried using a method that detected if the ports were opened, but it was always reporting them as opened after shutting down FlexLM.
-            // netstat commands suggested the same thing: the ports were opened, but FlexLM insisted they weren't, and I had to wait longer.
-            // This suggests that there's no reliable way of telling if FlexLM thinks the ports are opened without actually starting FlexLM. Rather than doing that,
-            // I've elected to just make the user wait. For whatever reason, Unix-based/like platforms seem to take longer than Windows. My guess is that
-            // FlexLM just hates non-Windows users. I mean, they don't even get a shitty GUI to use!
-            if (_platform == OSPlatform.Windows)
+            if (_stopButtonWasJustUsed)
             {
-                Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped " +
-                "and the desired TCP ports are opened.");
-                await Task.Delay(5000); // Wait 5 seconds.
+                StatusButton.IsEnabled = false;
+
+                // At one point, I tried using a method that detected if the ports were opened, but it was always reporting them as opened after shutting down FlexLM.
+                // netstat commands suggested the same thing: the ports were opened, but FlexLM insisted they weren't, and I had to wait longer.
+                // This suggests that there's no reliable way of telling if FlexLM thinks the ports are opened without actually starting FlexLM. Rather than doing that,
+                // I've elected to just make the user wait. For whatever reason, Unix-based/like platforms seem to take longer than Windows. My guess is that
+                // FlexLM just hates non-Windows users. I mean, they don't even get a shitty GUI to use!
+                if (_platform == OSPlatform.Windows)
+                {
+                    Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped " +
+                                                                           "and the desired TCP ports are opened.");
+                    await Task.Delay(5000); // Wait 5 seconds.
+                }
+                else // macOS and Linux seem to take longer. The time below doesn't guarantee anything, but it'll hopefully do the trick most of the time.
+                {
+                    Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 30 seconds. This is to ensure FlexLM has fully stopped " +
+                                                                           "and the desired TCP ports are opened.");
+                    await Task.Delay(20000); // Wait 30 seconds.
+                }
             }
-            else // macOS and Linux seem to take longer. The time below doesn't guarantee anything, but it'll hopefully do the trick most of the time.
-            {
-                Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 30 seconds. This is to ensure FlexLM has fully stopped " +
-                "and the desired TCP ports are opened.");
-                await Task.Delay(20000); // Wait 30 seconds.
-            }
+
+            StatusButton.IsEnabled = true;
+            StartButton.IsEnabled = true;
+            _stopButtonWasJustUsed = false;
+            _programWasJustLaunched = false;
         }
-
-        StatusButton.IsEnabled = true;
-        StartButton.IsEnabled = true;
-        _stopButtonWasJustUsed = false;
-        _programWasJustLaunched = false;
+        catch (Exception ex)
+        {
+            ShowErrorWindow($"An error occurred when attempting to change FlexLM's status to say it can start. Here is the automatic error message: {ex.Message}");
+        }
     }
 
     private void FlexLmCanStop()
@@ -577,32 +617,39 @@ public partial class MainWindow : Window
             StatusButton.IsEnabled = false;
         });
     }
-    private bool wantToAttemptForcedShutdown = false;
-    private bool firstAttemptToForceShutdown = true;
+    private bool _wantToAttemptForcedShutdown = false;
+    private bool _firstAttemptToForceShutdown = true;
 
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
-        _stopButtonWasJustUsed = true;
-
-        // Setup file paths to executables.
-        string? lmutilPath = LmutilLocationTextBox.Text;
-        string? licenseFilePath = LicenseFileLocationTextBox.Text;
-
-        if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+        try
         {
-            BusyWithFlexLm();
+            _stopButtonWasJustUsed = true;
 
-            OutputTextBlock.Text = "Loading. Please wait.";
+            // Setup file paths to executables.
+            string? lmutilPath = LmutilLocationTextBox.Text;
+            string? licenseFilePath = LicenseFileLocationTextBox.Text;
 
-            // Ensure the UI updates before actually doing anything.
-            await Task.Delay(100);
+            if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+            {
+                BusyWithFlexLm();
 
-            // Perform the "actual code" asynchronously to make sure the UI message displayed first.
-            await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+                OutputTextBlock.Text = "Loading. Please wait.";
+
+                // Ensure the UI updates before actually doing anything.
+                await Task.Delay(100);
+
+                // Perform the "actual code" asynchronously to make sure the UI message displayed first.
+                await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+            }
+            else
+            {
+                ShowErrorWindow("You either left your license path or lmutil path empty.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("You either left your license path or lmutil path empty.");
+            ShowErrorWindow($"An error occurred when attempting to use the Stop button. Here is the automatic error message: {ex.Message}");
         }
     }
 
@@ -610,22 +657,22 @@ public partial class MainWindow : Window
     {
         if (!File.Exists(lmutilPath))
         {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
+            Dispatcher.UIThread.Post(BusyWithFlexLm);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
+            Dispatcher.UIThread.Post(BusyWithFlexLm);
             return;
         }
 
         // Arguments for lmutil.
         string arguments = $"lmdown -c \"{licenseFilePath}\" -q";
 
-        if (wantToAttemptForcedShutdown)
+        if (_wantToAttemptForcedShutdown)
         { arguments = $"lmdown -c \"{licenseFilePath}\" -q -force"; }
 
         // Execute the full command!
@@ -692,129 +739,143 @@ public partial class MainWindow : Window
 
     private async void StartButton_Click(object sender, RoutedEventArgs e)
     {
-        string? lmgrdPath = LmgrdLocationTextBox.Text;
-        string? licenseFilePath = LicenseFileLocationTextBox.Text;
-        string? lmutilPath = LmutilLocationTextBox.Text;
-
-        if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath) && !string.IsNullOrWhiteSpace(lmutilPath))
+        try
         {
-            BusyWithFlexLm();
-            OutputTextBlock.Text = "Loading. Please wait.";
+            string? lmgrdPath = LmgrdLocationTextBox.Text;
+            string? licenseFilePath = LicenseFileLocationTextBox.Text;
+            string? lmutilPath = LmutilLocationTextBox.Text;
 
-            // Same deal as the Stop button.
-            await Task.Delay(100);
-            await Task.Run(() => ExecuteStartCommand(lmgrdPath, licenseFilePath, lmutilPath));
+            if (!string.IsNullOrWhiteSpace(lmgrdPath) && !string.IsNullOrWhiteSpace(licenseFilePath) && !string.IsNullOrWhiteSpace(lmutilPath))
+            {
+                BusyWithFlexLm();
+                OutputTextBlock.Text = "Loading. Please wait.";
+
+                // Same deal as the Stop button.
+                await Task.Delay(100);
+                await Task.Run(() => ExecuteStartCommand(lmgrdPath, licenseFilePath, lmutilPath));
+            }
+            else
+            {
+                ShowErrorWindow("You either left your license path or lmgrd path empty.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("You either left your license path or lmgrd path empty.");
+            ShowErrorWindow($"An error occurred when attempting to use the Start button. Here is the automatic error message: {ex.Message}");
         }
     }
 
     private async void ExecuteStartCommand(string lmgrdPath, string licenseFilePath, string lmutilPath)
     {
-        // Setup file paths to executables.
-        if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
-
-        if (!File.Exists(lmgrdPath))
-        {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmgrd executable was not found at the specified path: {lmgrdPath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
-            return;
-        }
-
-        if (!File.Exists(licenseFilePath))
-        {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
-            return;
-        }
-
-        if (!File.Exists(lmutilPath))
-        {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {lmutilPath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
-            return;
-        }
-
-        string arguments;
-        string lmLogPath = LmLogPath();
-
-        // Arguments for lmgrd.
-        if (_platform == OSPlatform.Windows)
-        {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
-        }
-        else
-        {
-            arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
-        }
-
-        // Execute the full command!
         try
         {
-            ProcessStartInfo startInfo = new()
+            // Setup file paths to executables.
+            if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
+
+            if (!File.Exists(lmgrdPath))
             {
-                FileName = lmgrdPath,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmgrd was not found at the specified path: {lmgrdPath}"));
+                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                return;
+            }
 
-            using Process process = new() { StartInfo = startInfo };
-            process.Start();
-
-            // Prevent hanging. Timeout after 3 seconds.
-            // Start reading the output and error streams asynchronously as part of preventing hanging.
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            Task collectDebugInfo = await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(3000));
-
-            if (collectDebugInfo == outputTask)
+            if (!File.Exists(licenseFilePath))
             {
-                var output = await outputTask;
-                var error = await errorTask;
+                Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
+                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                return;
+            }
 
-                if (process.ExitCode == 0)
-                {
-                    Console.WriteLine(output);
-                }
-                else
-                {
-                    Console.WriteLine(error);
-                }
+            if (!File.Exists(lmutilPath))
+            {
+                Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
+                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                return;
+            }
+
+            string arguments;
+            string lmLogPath = LmLogPath();
+
+            // Arguments for lmgrd.
+            if (_platform == OSPlatform.Windows)
+            {
+                arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
             }
             else
             {
-                Console.WriteLine("Getting startup output timed out to prevent hanging.");
+                arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
             }
-        }
-        catch (Exception ex)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                FlexLmStatusUnknown();
-                string exceptionString = ex.ToString();
 
-                if ((exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd")) && exceptionString.Contains("No such file or directory") && _platform == OSPlatform.Linux)
+            // Execute the full command!
+            try
+            {
+                ProcessStartInfo startInfo = new()
                 {
-                    ShowErrorWindow($"The server could not be started because lmutil and/or lmgrd was not found. This is likely because you are using a version of FlexLM and/or MLM that requires LSB. " +
-                    "Please obtain a newer copy of FlexLM and/or MLM that does not require LSB or install LSB on your system, if it's able to do so.");
-                    FlexLmCanStart();
-                    return;
+                    FileName = lmgrdPath,
+                    Arguments = arguments,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using Process process = new() { StartInfo = startInfo };
+                process.Start();
+
+                // Prevent hanging. Timeout after 3 seconds.
+                // Start reading the output and error streams asynchronously as part of preventing hanging.
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorTask = process.StandardError.ReadToEndAsync();
+                Task collectDebugInfo = await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(3000));
+
+                if (collectDebugInfo == outputTask)
+                {
+                    var output = await outputTask;
+                    var error = await errorTask;
+
+                    if (process.ExitCode == 0)
+                    {
+                        Console.WriteLine(output);
+                    }
+                    else
+                    {
+                        Console.WriteLine(error);
+                    }
                 }
                 else
                 {
-                    ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}");
+                    Console.WriteLine("Getting startup output timed out to prevent hanging.");
                 }
-            });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    FlexLmStatusUnknown();
+                    string exceptionString = ex.ToString();
+
+                    if ((exceptionString.Contains("lmutil") || exceptionString.Contains("lmgrd")) && exceptionString.Contains("No such file or directory") && _platform == OSPlatform.Linux)
+                    {
+                        ShowErrorWindow($"The server could not be started because lmutil and/or lmgrd was not found. This is likely because you are using a version of FlexLM and/or MLM that requires LSB. " +
+                                        "Please obtain a newer copy of FlexLM and/or MLM that does not require LSB or install LSB on your system, if it's able to do so.");
+                        FlexLmCanStart();
+                        return;
+                    }
+                    else
+                    {
+                        ShowErrorWindow($"Something bad happened when you tried to start FlexLM. Here's the automatic error message: {ex.Message}");
+                    }
+                });
+            }
+
+            await Task.Delay(1000);
+
+            Dispatcher.UIThread.Post(CheckStatus);
         }
-
-        await Task.Delay(1000);
-
-        Dispatcher.UIThread.Post(CheckStatus);
+        catch (Exception ex)
+        {
+            ShowErrorWindow($"An error occurred when attempting to execute the start command. Here is the automatic error message: {ex.Message}");
+        }
     }
 
     private void StatusButton_Click(object sender, RoutedEventArgs e)
@@ -844,25 +905,32 @@ public partial class MainWindow : Window
 
     private async void CheckStatus()
     {
-        OutputTextBlock.Text = "Loading. Please wait.";
-
-        // Hopefully increasing this to 1500 will reduce status error -16s.
-        await Task.Delay(1500);
-
-        string? lmutilPath = LmutilLocationTextBox.Text;
-        string? licenseFilePath = LicenseFileLocationTextBox.Text;
-        string lmLogPath = LmLogPath();
-
-        if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+        try
         {
-            BusyWithFlexLm();
+            OutputTextBlock.Text = "Loading. Please wait.";
 
-            // Run the long-running code asynchronously.
-            await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
+            // Hopefully increasing this to 1500 will reduce status error -16s.
+            await Task.Delay(1500);
+
+            string? lmutilPath = LmutilLocationTextBox.Text;
+            string? licenseFilePath = LicenseFileLocationTextBox.Text;
+            string lmLogPath = LmLogPath();
+
+            if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
+            {
+                BusyWithFlexLm();
+
+                // Run the long-running code asynchronously.
+                await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
+            }
+            else
+            {
+                ShowErrorWindow("You either left your license path or lmutil path empty.");
+            }
         }
-        else
+        catch (Exception ex)
         {
-            ShowErrorWindow("You either left your license path or lmutil path empty.");
+            ShowErrorWindow($"An error occurred when attempting to check FlexLM's status. Here is the automatic error message: {ex.Message}");
         }
     }
 
@@ -870,15 +938,15 @@ public partial class MainWindow : Window
     {
         if (!File.Exists(lmutilPath))
         {
-            Dispatcher.UIThread.Post(() => ShowErrorWindow($"The lmutil executable was not found at the specified path: {lmutilPath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
+            Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
+            Dispatcher.UIThread.Post(BusyWithFlexLm);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
+            Dispatcher.UIThread.Post(BusyWithFlexLm);
             return;
         }
 
@@ -992,16 +1060,16 @@ public partial class MainWindow : Window
                 else if (output.Contains("license server UP (MASTER)") && output.Contains("MLM: UP"))
                 {
                     // Attempt to force a shutdown, if necessary, and it's our first time trying to do so.
-                    if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567")) && _stopButtonWasJustUsed && firstAttemptToForceShutdown)
+                    if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567")) && _stopButtonWasJustUsed && _firstAttemptToForceShutdown)
                     {
-                        wantToAttemptForcedShutdown = true;
+                        _wantToAttemptForcedShutdown = true;
                         await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
-                        firstAttemptToForceShutdown = false;
+                        _firstAttemptToForceShutdown = false;
                         return;
                     }
                     else
                     {
-                        wantToAttemptForcedShutdown = false;
+                        _wantToAttemptForcedShutdown = false;
                     }
 
                     Dispatcher.UIThread.Post(() =>
@@ -1146,11 +1214,12 @@ public partial class MainWindow : Window
     private async void OutputLicenseUsageInfo(string output, string lmLogPath)
     {
         // Regex patterns used to parse needed info.
-        string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
-        string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
-        string formattedOutputText;
+        const string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
+        const string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
+        // Don't listen to Rider's lies. You never know what'll come out as null when the program is published.
+        string formattedOutputText = "blankFormattedOutputText";
         string[] logLines;
-        string logFileContents;
+        string logFileContents = "blankLogFileContents";
         IEnumerable<string> last50Lines;
 
         MatchCollection usageMatches = Regex.Matches(output, usagePattern);
@@ -1187,63 +1256,59 @@ public partial class MainWindow : Window
         // Iterate through the error matches first.
         foreach (Match match in errorMatches)
         {
-            if (match.Success)
+            if (!match.Success) continue;
+            string product = match.Groups[1].Value;
+
+            if (!File.Exists(lmLogPath)) continue;
+            try
             {
-                string product = match.Groups[1].Value;
+                bool causeWasFound = false;
 
-                if (File.Exists(lmLogPath))
+                // Yes I'm counting the lines so I can jump between different ones in my if cases below.
+                for (int i = 0; i < logLines.Length; i++)
                 {
-                    try
+                    var line = logLines[i];
+
+                    if (line.Contains($"EXPIRED: {product}"))
                     {
-                        bool causeWasFound = false;
-
-                        // Yes I'm counting the lines so I can jump between different ones in my if cases below.
-                        for (int i = 0; i < logLines.Length; i++)
+                        OutputTextBlock.Text += $"\n{product} is expired and cannot be used.";
+                        causeWasFound = true;
+                        break;
+                    }
+                    else if (line.Contains("Invalid license key (inconsistent authentication code)"))
+                    {
+                        if (i + 1 < logLines.Length && logLines[i + 1].Contains($"==>INCREMENT {product}"))
                         {
-                            var line = logLines[i];
-
-                            if (line.Contains($"EXPIRED: {product}"))
-                            {
-                                OutputTextBlock.Text += $"\n{product} is expired and cannot be used.";
-                                causeWasFound = true;
-                                break;
-                            }
-                            else if (line.Contains("Invalid license key (inconsistent authentication code)"))
-                            {
-                                if (i + 1 < logLines.Length && logLines[i + 1].Contains($"==>INCREMENT {product}"))
-                                {
-                                    OutputTextBlock.Text += $"\n{product} has an invalid authentication key and needs its license file to be regenerated.";
-                                    causeWasFound = true;
-                                    break;
-                                }
-                            }
-                            else if (line.Contains($"(MLM) USER_BASED license error for {product} (INCLUDE missing)"))
-                            {
-                                OutputTextBlock.Text += $"\n{product} is from an NNU license and does not have a valid INCLUDE setup. Therefore, it cannot be used.";
-                                causeWasFound = true;
-                                break;
-                            }
-                            else if (line.Contains($"(MLM) USER_BASED license error for {product} --"))
-                            {
-                                if (i + 1 < logLines.Length && logLines[i + 1].Contains($"Number of INCLUDE names (") && logLines[i + 1].Contains($") exceeds limit of"))
-                                {
-                                    OutputTextBlock.Text += $"\n{product} has too many users included from the options file and therefore, cannot be used.";
-                                    causeWasFound = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!causeWasFound)
-                        {
-                            OutputTextBlock.Text += $"\n{product}: an error is preventing this product from being used.";
+                            OutputTextBlock.Text += $"\n{product} has an invalid authentication key and needs its license file to be regenerated.";
+                            causeWasFound = true;
+                            break;
                         }
                     }
-                    catch (Exception ex)
+                    else if (line.Contains($"(MLM) USER_BASED license error for {product} (INCLUDE missing)"))
                     {
-                        ShowErrorWindow($"Something bad happened when we tried to print out the server's status info. Here's the automatic error message: {ex.Message}");
+                        OutputTextBlock.Text += $"\n{product} is from an NNU license and does not have a valid INCLUDE setup. Therefore, it cannot be used.";
+                        causeWasFound = true;
+                        break;
+                    }
+                    else if (line.Contains($"(MLM) USER_BASED license error for {product} --"))
+                    {
+                        if (i + 1 < logLines.Length && logLines[i + 1].Contains($"Number of INCLUDE names (") && logLines[i + 1].Contains($") exceeds limit of"))
+                        {
+                            OutputTextBlock.Text += $"\n{product} has too many users included from the options file and therefore, cannot be used.";
+                            causeWasFound = true;
+                            break;
+                        }
                     }
                 }
+
+                if (!causeWasFound)
+                {
+                    OutputTextBlock.Text += $"\n{product}: an error is preventing this product from being used.";
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowErrorWindow($"Something bad happened when we tried to print out the server's status info. Here's the automatic error message: {ex.Message}");
             }
         }
 
@@ -1276,23 +1341,21 @@ public partial class MainWindow : Window
         // Now iterate through the usage matches.
         foreach (Match match in usageMatches)
         {
-            if (match.Success)
-            {
-                string product = match.Groups[1].Value;
-                string totalSeats = match.Groups[2].Value;
-                string seatsInUse = match.Groups[3].Value;
+            if (!match.Success) continue;
+            string product = match.Groups[1].Value;
+            string totalSeats = match.Groups[2].Value;
+            string seatsInUse = match.Groups[3].Value;
 
-                // Stupid grammar.
-                if (totalSeats == "1")
-                {
-                    formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seat in use.";
-                }
-                else
-                {
-                    formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
-                }
-                OutputTextBlock.Text += formattedOutputText;
+            // Stupid grammar.
+            if (totalSeats == "1")
+            {
+                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seat in use.";
             }
+            else
+            {
+                formattedOutputText = $"\n{product}: {seatsInUse}/{totalSeats} seats in use.";
+            }
+            OutputTextBlock.Text += formattedOutputText;
         }
     }
 }
