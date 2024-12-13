@@ -1109,7 +1109,7 @@ public partial class MainWindow : Window
                             else if (last20Lines.Any(line => line.Contains("MLM exited with status 27 (No features to serve)")))
                             {
                                 OutputTextBlock.Text = "LMGRD was able to start, but MLM could not. This could be caused by a syntax error in the license file, MLM's port is being used by something else (likely another instance of MLM), " +
-                                "the license file has expired/the system clock is set incorrectly, or you combined the Enterprise and non-Enterprise license manager installation files into 1 folder.";
+                                "the license file has expired/the system clock is set incorrectly, accidentally pointing to an Individual license, or you combined the Enterprise and non-Enterprise license manager installation files into 1 folder.";
                             }
                             else if (last20Lines.Any(line => line.Contains("(lmgrd) MLM exited with status 2 signal = 17")))
                             {
@@ -1214,8 +1214,10 @@ public partial class MainWindow : Window
     private async void OutputLicenseUsageInfo(string output, string lmLogPath)
     {
         // Regex patterns used to parse needed info.
-        const string usagePattern = @"Users of (\w+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
-        const string errorPattern = @"Users of (\w+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
+        const string usagePattern = @"Users of ([\w\-\.]+):\s+\(Total of (\d+) license[s]? issued;\s+Total of (\d+) license[s]? in use\)";
+        const string errorPattern = @"Users of ([\w\-\.]+):\s+\(Error: (\d+) license[s]?, unsupported by licensed server\)";
+        const string dcLicensePattern = @"Users of ([\w\-\.]+):\s+\(Uncounted, node-locked\)";
+
         // Don't listen to Rider's lies. You never know what'll come out as null when the program is published.
         string formattedOutputText = "blankFormattedOutputText";
         string[] logLines;
@@ -1224,6 +1226,7 @@ public partial class MainWindow : Window
 
         MatchCollection usageMatches = Regex.Matches(output, usagePattern);
         MatchCollection errorMatches = Regex.Matches(output, errorPattern);
+        MatchCollection dcLicenseMatches = Regex.Matches(output, dcLicensePattern);
 
         OutputTextBlock.Text += "\n"; // Give a bit of space.
 
@@ -1336,6 +1339,17 @@ public partial class MainWindow : Window
         if (errorMatches.Count != 0 || warningMessageDisplayed)
         {
             OutputTextBlock.Text += "\n";
+        }
+
+        // You can technically put a Designated Computer license on a license server, but there's really no reason to and therefore, we will assume this is an error.
+        foreach (Match match in dcLicenseMatches)
+        {
+            if (!match.Success) continue;
+            string product = match.Groups[1].Value;
+
+            formattedOutputText = $"\nThe product {product} is from a Designated Computer license.";
+
+            OutputTextBlock.Text += formattedOutputText;
         }
 
         // Now iterate through the usage matches.
