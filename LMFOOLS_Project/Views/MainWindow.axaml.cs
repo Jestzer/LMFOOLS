@@ -983,6 +983,8 @@ public partial class MainWindow : Window
             var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
             var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
 
+            bool statusIsUnknown = false;
+
             // Check the exit code to determine if the command succeeded.
             if (process.ExitCode == 0)
             {
@@ -1025,6 +1027,12 @@ public partial class MainWindow : Window
                                     ShowErrorWindow("FlexLM is down. The primary port number is still in use. This is likely because it still needs to be freed from the server running earlier." +
                                     "Please attempt to start the server again in 30 seconds.");
                                 }
+                                else if (last20Lines.Any(line => line.Contains("(MLM) Listener Thread: running")))
+                                {
+                                    ShowErrorWindow("FlexLM may be running, but lmstat is reporting it as down. It is likely your network is misconfigured in such a way that your computer cannot " +
+                                    "resolve its own hostname and/or its IP address is not being set or read correctly. Please view the log file for more details.");
+                                    statusIsUnknown = true;
+                                }
                                 else
                                 {
                                     if (_stopButtonWasJustUsed || _programWasJustLaunched || (last20Lines.Any(line => line.Contains("(lmgrd) EXITING DUE TO SIGNAL 15")) && last20Lines.Any(line => line.Contains("(MLM) daemon shutdown requested - shutting down"))))
@@ -1053,7 +1061,14 @@ public partial class MainWindow : Window
                                 ShowErrorWindow("FlexLM is down. Check the log file for more information.");
                             }
                         }
-                        FlexLmCanStart();
+                        if (!statusIsUnknown)
+                        {
+                            FlexLmCanStart();
+                        }
+                        else
+                        {
+                            FlexLmStatusUnknown();
+                        }                        
                     });
                 }
                 // Successfully launched.
