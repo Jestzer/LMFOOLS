@@ -799,11 +799,11 @@ public partial class MainWindow : Window
             // Arguments for lmgrd.
             if (_platform == OSPlatform.Windows)
             {
-                arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
+                arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
             }
             else
             {
-                arguments = $"-c \"{licenseFilePath}\" -l \"{lmLogPath}\"";
+                arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
             }
 
             // Execute the full command!
