@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.ServiceProcess;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -15,6 +16,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using LMFOOLS_Project.ViewModels;
+using Microsoft.Win32;
 
 namespace LMFOOLS_Project.Views;
 
@@ -81,6 +83,7 @@ public partial class MainWindow : Window
     }
 
     private bool _flexLmIsAlreadyRunning;
+    private sealed record WindowsServiceInfo(string ServiceName, string DisplayName, string ImagePath);
 
     // It's bad because it's not a thorough check.
     private void BadFlexLmStatusCheckAndButtonUpdate()
@@ -125,6 +128,214 @@ public partial class MainWindow : Window
     private void LmutilLocationTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         BadFlexLmStatusCheckAndButtonUpdate();
+    }
+
+    private static string? NormalizePath(string? rawPath)
+    {
+        if (string.IsNullOrWhiteSpace(rawPath)) return null;
+        string trimmed = rawPath.Trim().Trim('"');
+        try
+        {
+            return Path.GetFullPath(trimmed);
+        }
+        catch
+        {
+            return trimmed;
+        }
+    }
+
+    private static string? ExtractExecutablePath(string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath)) return null;
+        string expanded = Environment.ExpandEnvironmentVariables(imagePath).Trim();
+
+        if (expanded.StartsWith("\"", StringComparison.Ordinal))
+        {
+            int endQuote = expanded.IndexOf('"', 1);
+            if (endQuote > 1)
+            {
+                return expanded.Substring(1, endQuote - 1);
+            }
+        }
+
+        int firstSpace = expanded.IndexOf(' ');
+        if (firstSpace > 0)
+        {
+            return expanded.Substring(0, firstSpace);
+        }
+
+        return expanded;
+    }
+
+    private WindowsServiceInfo? TryGetLmgrdWindowsService(string? lmgrdPath)
+    {
+        if (_platform != OSPlatform.Windows)
+        {
+            return null;
+        }
+
+        try
+        {
+            string? normalizedLmgrdPath = NormalizePath(lmgrdPath);
+            using RegistryKey? servicesKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
+            if (servicesKey == null) return null;
+
+            WindowsServiceInfo? fallbackMatch = null;
+
+            foreach (string serviceName in servicesKey.GetSubKeyNames())
+            {
+                using RegistryKey? serviceKey = servicesKey.OpenSubKey(serviceName);
+                string? imagePath = serviceKey?.GetValue("ImagePath") as string;
+                if (string.IsNullOrWhiteSpace(imagePath)) continue;
+
+                string? executablePath = ExtractExecutablePath(imagePath);
+                if (string.IsNullOrWhiteSpace(executablePath)) continue;
+
+                string displayName = serviceKey?.GetValue("DisplayName") as string ?? serviceName;
+
+                if (!string.IsNullOrWhiteSpace(normalizedLmgrdPath))
+                {
+                    string? normalizedExecutablePath = NormalizePath(executablePath);
+                    if (!string.IsNullOrWhiteSpace(normalizedExecutablePath) &&
+                        string.Equals(normalizedExecutablePath, normalizedLmgrdPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new WindowsServiceInfo(serviceName, displayName, imagePath);
+                    }
+                }
+
+                if (fallbackMatch == null && executablePath.Contains("lmgrd", StringComparison.OrdinalIgnoreCase))
+                {
+                    fallbackMatch = new WindowsServiceInfo(serviceName, displayName, imagePath);
+                }
+            }
+
+            return fallbackMatch;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string WindowsServiceDetectedMessage(WindowsServiceInfo info)
+    {
+        return $"Detected Windows Service: {info.DisplayName} (service name: {info.ServiceName}).";
+    }
+
+    private bool TryStartWindowsService(WindowsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            using ServiceController controller = new(info.ServiceName);
+            controller.Refresh();
+
+            if (controller.Status == ServiceControllerStatus.Running)
+            {
+                return true;
+            }
+
+            if (controller.Status == ServiceControllerStatus.StartPending)
+            {
+                controller.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+                controller.Refresh();
+                return controller.Status == ServiceControllerStatus.Running;
+            }
+
+            controller.Start();
+            controller.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
+            controller.Refresh();
+            return controller.Status == ServiceControllerStatus.Running;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private bool TryStopWindowsService(WindowsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            using ServiceController controller = new(info.ServiceName);
+            controller.Refresh();
+
+            if (controller.Status == ServiceControllerStatus.Stopped)
+            {
+                return true;
+            }
+
+            if (controller.Status == ServiceControllerStatus.StopPending)
+            {
+                controller.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+                controller.Refresh();
+                return controller.Status == ServiceControllerStatus.Stopped;
+            }
+
+            controller.Stop();
+            controller.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
+            controller.Refresh();
+            return controller.Status == ServiceControllerStatus.Stopped;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private void ExecuteWindowsServiceStatus(WindowsServiceInfo info)
+    {
+        try
+        {
+            using ServiceController controller = new(info.ServiceName);
+            controller.Refresh();
+            ServiceControllerStatus status = controller.Status;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                string statusText = status switch
+                {
+                    ServiceControllerStatus.Running => "running",
+                    ServiceControllerStatus.Stopped => "stopped",
+                    ServiceControllerStatus.StartPending => "starting",
+                    ServiceControllerStatus.StopPending => "stopping",
+                    ServiceControllerStatus.ContinuePending => "continuing",
+                    ServiceControllerStatus.PausePending => "pausing",
+                    ServiceControllerStatus.Paused => "paused",
+                    _ => "unknown"
+                };
+
+                OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(info)}\nFlexLM Windows Service is {statusText}.";
+
+                switch (status)
+                {
+                    case ServiceControllerStatus.Running:
+                        FlexLmCanStop();
+                        break;
+                    case ServiceControllerStatus.Stopped:
+                        FlexLmCanStart();
+                        break;
+                    case ServiceControllerStatus.StartPending:
+                    case ServiceControllerStatus.StopPending:
+                        FlexLmIsAttemptingToRestart();
+                        break;
+                    default:
+                        FlexLmStatusUnknown();
+                        break;
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ShowErrorWindow($"An error occurred when attempting to check Windows Service status. Here is the automatic error message: {ex.Message}");
+                FlexLmStatusUnknown();
+            });
+        }
     }
 
     [JsonSerializable(typeof(Settings))]
@@ -629,6 +840,7 @@ public partial class MainWindow : Window
             // Setup file paths to executables.
             string? lmutilPath = LmutilLocationTextBox.Text;
             string? licenseFilePath = LicenseFileLocationTextBox.Text;
+            string? lmgrdPath = LmgrdLocationTextBox.Text;
 
             if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
             {
@@ -640,7 +852,7 @@ public partial class MainWindow : Window
                 await Task.Delay(100);
 
                 // Perform the "actual code" asynchronously to make sure the UI message displayed first.
-                await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+                await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath, lmgrdPath));
             }
             else
             {
@@ -653,8 +865,32 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExecuteStopCommand(string lmutilPath, string licenseFilePath)
+    private void ExecuteStopCommand(string lmutilPath, string licenseFilePath, string? lmgrdPath)
     {
+        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+        if (serviceInfo != null)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStopping Windows Service. Please wait.";
+            });
+
+            if (TryStopWindowsService(serviceInfo, out string? errorMessage))
+            {
+                Dispatcher.UIThread.Post(CheckStatus);
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ShowErrorWindow($"Failed to stop Windows Service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
+                    FlexLmStatusUnknown();
+                });
+            }
+
+            return;
+        }
+
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
@@ -771,6 +1007,30 @@ public partial class MainWindow : Window
         {
             // Setup file paths to executables.
             if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
+
+            WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+            if (serviceInfo != null)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStarting Windows Service. Please wait.";
+                });
+
+                if (TryStartWindowsService(serviceInfo, out string? errorMessage))
+                {
+                    Dispatcher.UIThread.Post(CheckStatus);
+                }
+                else
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        ShowErrorWindow($"Failed to start Windows Service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
+                        FlexLmStatusUnknown();
+                    });
+                }
+
+                return;
+            }
 
             if (!File.Exists(lmgrdPath))
             {
@@ -920,8 +1180,16 @@ public partial class MainWindow : Window
             {
                 BusyWithFlexLm();
 
-                // Run the long-running code asynchronously.
-                await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
+                WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(LmgrdLocationTextBox.Text);
+                if (serviceInfo != null)
+                {
+                    await Task.Run(() => ExecuteWindowsServiceStatus(serviceInfo));
+                }
+                else
+                {
+                    // Run the long-running code asynchronously.
+                    await Task.Run(() => ExecuteCheckStatus(lmutilPath, licenseFilePath, lmLogPath));
+                }
             }
             else
             {
@@ -1078,7 +1346,7 @@ public partial class MainWindow : Window
                     if (last20Lines.Any(line => line.Contains("(lmgrd) Redo lmdown with '-force' arg.")) && last20Lines.Any(line => line.Contains("(lmgrd) Cannot lmdown the server when licenses are borrowed. (-120,567")) && _stopButtonWasJustUsed && _firstAttemptToForceShutdown)
                     {
                         _wantToAttemptForcedShutdown = true;
-                        await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath));
+                        await Task.Run(() => ExecuteStopCommand(lmutilPath, licenseFilePath, null));
                         _firstAttemptToForceShutdown = false;
                         return;
                     }
