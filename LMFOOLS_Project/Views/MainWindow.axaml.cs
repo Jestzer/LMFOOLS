@@ -232,6 +232,200 @@ public partial class MainWindow : Window
         return principal.IsInRole(WindowsBuiltInRole.Administrator);
     }
 
+    // Parses the -l flag from an lmgrd command line string to find the log file path.
+    private static string? ParseLogPathFromCommandLine(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine)) return null;
+
+        // Handle /proc/pid/cmdline format (null-byte separated).
+        if (commandLine.Contains('\0'))
+        {
+            string[] args = commandLine.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] == "-l")
+                {
+                    string logPath = args[i + 1].TrimStart('+').Trim('"');
+                    if (!string.IsNullOrWhiteSpace(logPath)) return logPath;
+                }
+            }
+
+            return null;
+        }
+
+        // Handle regular command line format (space-separated, possibly with quotes).
+        int index = 0;
+        while (index < commandLine.Length)
+        {
+            index = commandLine.IndexOf("-l", index, StringComparison.Ordinal);
+            if (index < 0) return null;
+
+            // Verify -l is a standalone flag (not part of another word).
+            bool validStart = index == 0 || char.IsWhiteSpace(commandLine[index - 1]);
+            bool validEnd = index + 2 < commandLine.Length && char.IsWhiteSpace(commandLine[index + 2]);
+
+            if (validStart && validEnd)
+            {
+                // Skip past "-l" and whitespace to find the path.
+                int pathStart = index + 2;
+                while (pathStart < commandLine.Length && char.IsWhiteSpace(commandLine[pathStart])) pathStart++;
+                if (pathStart >= commandLine.Length) return null;
+
+                string remaining = commandLine[pathStart..];
+
+                // Strip leading + (append mode indicator).
+                if (remaining.StartsWith('+')) remaining = remaining[1..];
+
+                if (remaining.StartsWith('"'))
+                {
+                    int endQuote = remaining.IndexOf('"', 1);
+                    if (endQuote > 1) return remaining[1..endQuote];
+                }
+                else
+                {
+                    int end = remaining.IndexOf(' ');
+                    return end > 0 ? remaining[..end] : remaining;
+                }
+            }
+
+            index += 2;
+        }
+
+        return null;
+    }
+
+    // Retrieves the command line of a running process by PID (platform-specific).
+    private string? GetProcessCommandLine(int pid)
+    {
+        try
+        {
+            if (_platform == OSPlatform.Linux)
+            {
+                string cmdlinePath = $"/proc/{pid}/cmdline";
+                if (File.Exists(cmdlinePath))
+                {
+                    return File.ReadAllText(cmdlinePath);
+                }
+            }
+            else if (_platform == OSPlatform.OSX)
+            {
+                using Process psProcess = new();
+                psProcess.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "ps",
+                    Arguments = $"-p {pid} -o args=",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                psProcess.Start();
+                string output = psProcess.StandardOutput.ReadToEnd();
+                psProcess.WaitForExit();
+                if (psProcess.ExitCode == 0 && !string.IsNullOrWhiteSpace(output)) return output.Trim();
+            }
+            else if (_platform == OSPlatform.Windows)
+            {
+                using Process wmicProcess = new();
+                wmicProcess.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "wmic",
+                    Arguments = $"process where \"processid={pid}\" get CommandLine /value",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                wmicProcess.Start();
+                string output = wmicProcess.StandardOutput.ReadToEnd();
+                wmicProcess.WaitForExit();
+                if (wmicProcess.ExitCode == 0)
+                {
+                    foreach (string line in output.Split('\n'))
+                    {
+                        string trimmed = line.Trim();
+                        if (trimmed.StartsWith("CommandLine=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return trimmed["CommandLine=".Length..];
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If we can't get the command line, fall through to return null.
+        }
+
+        return null;
+    }
+
+    // Tries to detect the actual log file path that lmgrd is using.
+    // Returns null if it can't be determined (caller should fall back to LmLogPath()).
+    private string? TryDetectLmgrdLogPath(WindowsServiceInfo? serviceInfo)
+    {
+        // 1. If a Windows Service is detected, parse -l from the service's ImagePath.
+        if (serviceInfo != null)
+        {
+            string? logPath = ParseLogPathFromCommandLine(serviceInfo.ImagePath);
+            if (!string.IsNullOrWhiteSpace(logPath))
+            {
+                // Try to resolve relative paths against lmgrd's directory.
+                try
+                {
+                    if (!Path.IsPathRooted(logPath))
+                    {
+                        string? serviceExePath = ExtractExecutablePath(serviceInfo.ImagePath);
+                        string? serviceDir = !string.IsNullOrWhiteSpace(serviceExePath) ? Path.GetDirectoryName(serviceExePath) : null;
+                        if (!string.IsNullOrWhiteSpace(serviceDir))
+                        {
+                            logPath = Path.GetFullPath(Path.Combine(serviceDir, logPath));
+                        }
+                    }
+                }
+                catch
+                {
+                    // If path resolution fails, try the path as-is.
+                }
+
+                if (File.Exists(logPath)) return logPath;
+            }
+        }
+
+        // 2. Try to find a running lmgrd process and parse its command line.
+        try
+        {
+            Process[] processes = Process.GetProcessesByName("lmgrd");
+            foreach (var proc in processes)
+            {
+                try
+                {
+                    string? cmdLine = GetProcessCommandLine(proc.Id);
+                    if (!string.IsNullOrWhiteSpace(cmdLine))
+                    {
+                        string? logPath = ParseLogPathFromCommandLine(cmdLine);
+                        if (!string.IsNullOrWhiteSpace(logPath) && File.Exists(logPath))
+                        {
+                            return logPath;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Continue to the next process.
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+        }
+        catch
+        {
+            // Process enumeration failed, fall through.
+        }
+
+        return null;
+    }
+
     private bool TryStartWindowsService(WindowsServiceInfo info, out string? errorMessage)
     {
         errorMessage = null;
@@ -296,7 +490,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void ExecuteWindowsServiceStatus(WindowsServiceInfo info)
+    private async void ExecuteWindowsServiceStatus(WindowsServiceInfo info, string lmLogPath)
     {
         try
         {
@@ -394,7 +588,7 @@ public partial class MainWindow : Window
                             capturedLmstatOutput.Contains("license server UP (MASTER)") &&
                             capturedLmstatOutput.Contains("MLM: UP"))
                         {
-                            OutputLicenseUsageInfo(capturedLmstatOutput, LmLogPath());
+                            OutputLicenseUsageInfo(capturedLmstatOutput, lmLogPath);
                         }
 
                         break;
@@ -1256,9 +1450,13 @@ public partial class MainWindow : Window
         CheckStatus();
     }
 
-    private void LogButton_Click(object sender, RoutedEventArgs e)
+    private async void LogButton_Click(object sender, RoutedEventArgs e)
     {
-        string lmLogPath = LmLogPath();
+        // Try to detect the actual log file lmgrd is using.
+        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(LmgrdLocationTextBox.Text);
+        string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo));
+        string lmLogPath = detectedLogPath ?? LmLogPath();
+
         if (File.Exists(lmLogPath))
         {
             try
@@ -1271,7 +1469,7 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                Dispatcher.UIThread.Post(() => ShowErrorWindow($"Failed to open log file: {ex.Message}"));
+                ShowErrorWindow($"Failed to open log file: {ex.Message}");
             }
         }
     }
@@ -1287,16 +1485,20 @@ public partial class MainWindow : Window
 
             string? lmutilPath = LmutilLocationTextBox.Text;
             string? licenseFilePath = LicenseFileLocationTextBox.Text;
-            string lmLogPath = LmLogPath();
 
             if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath))
             {
                 BusyWithFlexLm();
 
                 WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(LmgrdLocationTextBox.Text);
+
+                // Try to detect the actual log file path lmgrd is using.
+                string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo));
+                string lmLogPath = detectedLogPath ?? LmLogPath();
+
                 if (serviceInfo != null)
                 {
-                    await Task.Run(() => ExecuteWindowsServiceStatus(serviceInfo));
+                    await Task.Run(() => ExecuteWindowsServiceStatus(serviceInfo, lmLogPath));
                 }
                 else
                 {
@@ -1356,13 +1558,31 @@ public partial class MainWindow : Window
 
             process.WaitForExit();
 
-            // Find out why FlexLM is down, from the log file, if necessary.
-            string fileContents;
-            using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(stream)) { fileContents = await reader.ReadToEndAsync(); }
+            // Try to read the log file for detailed error analysis. If it's unavailable, lmstat output is still analyzed.
+            string[] lines = [];
+            IEnumerable<string> last20Lines = [];
 
-            var lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
-            var last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+            if (File.Exists(lmLogPath))
+            {
+                try
+                {
+                    string fileContents;
+                    using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var reader = new StreamReader(stream)) { fileContents = await reader.ReadToEndAsync(); }
+
+                    lines = fileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                    last20Lines = lines.Skip(Math.Max(0, lines.Length - 20));
+                }
+                catch (Exception logEx)
+                {
+                    if (logEx.Message.Contains("being used by another process"))
+                    {
+                        Dispatcher.UIThread.Post(() => ShowErrorWindow("You have the log file opened in another program, which is preventing this program from reading it."));
+                        return;
+                    }
+                    // For other errors, continue without log data.
+                }
+            }
 
             bool statusIsUnknown = false;
 
@@ -1616,9 +1836,8 @@ public partial class MainWindow : Window
 
         // Don't listen to Rider's lies. You never know what'll come out as null when the program is published.
         string formattedOutputText = "blankFormattedOutputText";
-        string[] logLines;
-        string logFileContents = "blankLogFileContents";
-        IEnumerable<string> last50Lines;
+        string[] logLines = [];
+        IEnumerable<string> last50Lines = [];
 
         MatchCollection usageMatches = Regex.Matches(output, usagePattern);
         MatchCollection errorMatches = Regex.Matches(output, errorPattern);
@@ -1626,29 +1845,28 @@ public partial class MainWindow : Window
 
         OutputTextBlock.Text += "\n"; // Give a bit of space.
 
-        // Find out why your product is unavailable. Check for other errors too.
-        try
+        // Try to read the log file for detailed error analysis. If unavailable, seat info still displays.
+        if (File.Exists(lmLogPath))
         {
-            using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-            using (var reader = new StreamReader(stream))
+            try
             {
-                logFileContents = await reader.ReadToEndAsync();
-            }
+                string logFileContents;
+                using (var stream = new FileStream(lmLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(stream))
+                {
+                    logFileContents = await reader.ReadToEndAsync();
+                }
 
-            logLines = logFileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
-            last50Lines = logLines.Skip(Math.Max(0, logLines.Length - 50));
-        }
-        catch (Exception ex)
-        {
-            if (ex.Message.Contains("lmlog.txt' because it is being used by another process."))
-            {
-                ShowErrorWindow("Another program is using the log file. Please close that program in order to proceed.");
-                return;
+                logLines = logFileContents.Split(LineSeparator, StringSplitOptions.RemoveEmptyEntries);
+                last50Lines = logLines.Skip(Math.Max(0, logLines.Length - 50));
             }
-            else
+            catch (Exception ex)
             {
-                ShowErrorWindow("Something bad happened when attempting to display the server's status: " + ex.Message);
-                return;
+                if (ex.Message.Contains("being used by another process"))
+                {
+                    ShowErrorWindow("Another program is using the log file. Some license details may be unavailable.");
+                }
+                // Continue without log data — seat info from lmstat will still display.
             }
         }
 
@@ -1658,7 +1876,6 @@ public partial class MainWindow : Window
             if (!match.Success) continue;
             string product = match.Groups[1].Value;
 
-            if (!File.Exists(lmLogPath)) continue;
             try
             {
                 bool causeWasFound = false;
