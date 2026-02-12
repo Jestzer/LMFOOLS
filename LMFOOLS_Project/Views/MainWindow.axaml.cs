@@ -360,7 +360,7 @@ public partial class MainWindow : Window
 
     // Tries to detect the actual log file path that lmgrd is using.
     // Returns null if it can't be determined (caller should fall back to LmLogPath()).
-    private string? TryDetectLmgrdLogPath(WindowsServiceInfo? serviceInfo)
+    private string? TryDetectLmgrdLogPath(WindowsServiceInfo? serviceInfo, string? lmgrdPath)
     {
         // 1. If a Windows Service is detected, parse -l from the service's ImagePath.
         if (serviceInfo != null)
@@ -421,6 +421,38 @@ public partial class MainWindow : Window
         catch
         {
             // Process enumeration failed, fall through.
+        }
+
+        // 3. Check for lmlog.txt in lmgrd's directory. If it has newer entries than the
+        //    program's default log, it's likely the one being actively used.
+        try
+        {
+            string? lmgrdDir = !string.IsNullOrWhiteSpace(lmgrdPath) ? Path.GetDirectoryName(lmgrdPath) : null;
+            if (!string.IsNullOrWhiteSpace(lmgrdDir))
+            {
+                string candidateLogPath = Path.Combine(lmgrdDir, "lmlog.txt");
+                if (File.Exists(candidateLogPath))
+                {
+                    string defaultLogPath = LmLogPath();
+                    if (!File.Exists(defaultLogPath))
+                    {
+                        // The program's default log doesn't exist, so the one next to lmgrd is our best bet.
+                        return candidateLogPath;
+                    }
+
+                    // Both exist. Prefer whichever was written to more recently.
+                    DateTime candidateLastWrite = File.GetLastWriteTimeUtc(candidateLogPath);
+                    DateTime defaultLastWrite = File.GetLastWriteTimeUtc(defaultLogPath);
+                    if (candidateLastWrite > defaultLastWrite)
+                    {
+                        return candidateLogPath;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If the heuristic fails, fall through.
         }
 
         return null;
@@ -1453,8 +1485,9 @@ public partial class MainWindow : Window
     private async void LogButton_Click(object sender, RoutedEventArgs e)
     {
         // Try to detect the actual log file lmgrd is using.
-        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(LmgrdLocationTextBox.Text);
-        string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo));
+        string? lmgrdPath = LmgrdLocationTextBox.Text;
+        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+        string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo, lmgrdPath));
         string lmLogPath = detectedLogPath ?? LmLogPath();
 
         if (File.Exists(lmLogPath))
@@ -1490,10 +1523,11 @@ public partial class MainWindow : Window
             {
                 BusyWithFlexLm();
 
-                WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(LmgrdLocationTextBox.Text);
+                string? lmgrdPath = LmgrdLocationTextBox.Text;
+                WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
 
                 // Try to detect the actual log file path lmgrd is using.
-                string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo));
+                string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo, lmgrdPath));
                 string lmLogPath = detectedLogPath ?? LmLogPath();
 
                 if (serviceInfo != null)
