@@ -597,7 +597,7 @@ public partial class MainWindow : Window
 
                 if (!isAdmin)
                 {
-                    OutputTextBlock.Text += "\nThis program is not running as administrator. Start and Stop are disabled for Windows Services.";
+                    OutputTextBlock.Text += "\nThis program is not running as an administrator. Start and Stop are disabled for Windows Services.";
                 }
 
                 switch (status)
