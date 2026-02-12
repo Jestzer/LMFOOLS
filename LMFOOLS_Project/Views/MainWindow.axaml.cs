@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.ServiceProcess;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -222,6 +223,15 @@ public partial class MainWindow : Window
         return $"Detected Windows Service: {info.DisplayName} (service name: {info.ServiceName}).";
     }
 
+    private static bool IsRunningAsAdministrator()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        WindowsPrincipal principal = new(identity);
+        return principal.IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
     private bool TryStartWindowsService(WindowsServiceInfo info, out string? errorMessage)
     {
         errorMessage = null;
@@ -286,14 +296,63 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ExecuteWindowsServiceStatus(WindowsServiceInfo info)
+    private async void ExecuteWindowsServiceStatus(WindowsServiceInfo info)
     {
         try
         {
             using ServiceController controller = new(info.ServiceName);
             controller.Refresh();
             ServiceControllerStatus status = controller.Status;
+            bool isAdmin = IsRunningAsAdministrator();
 
+            // If the service is running, try to get seat info via lmstat.
+            string? lmstatOutput = null;
+            if (status == ServiceControllerStatus.Running)
+            {
+                string? lmutilPath = null;
+                string? licenseFilePath = null;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    lmutilPath = LmutilLocationTextBox.Text;
+                    licenseFilePath = LicenseFileLocationTextBox.Text;
+                });
+
+                // Small delay to let the UI thread process the above.
+                await Task.Delay(50);
+
+                if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath) &&
+                    File.Exists(lmutilPath) && File.Exists(licenseFilePath))
+                {
+                    try
+                    {
+                        ProcessStartInfo startInfo = new()
+                        {
+                            FileName = lmutilPath,
+                            Arguments = $"lmstat -c \"{licenseFilePath}\" -a",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+
+                        using Process process = new() { StartInfo = startInfo };
+                        process.Start();
+                        lmstatOutput = await process.StandardOutput.ReadToEndAsync();
+                        await process.WaitForExitAsync();
+
+                        if (process.ExitCode != 0)
+                        {
+                            lmstatOutput = null;
+                        }
+                    }
+                    catch
+                    {
+                        lmstatOutput = null;
+                    }
+                }
+            }
+
+            string capturedLmstatOutput = lmstatOutput ?? "";
             Dispatcher.UIThread.Post(() =>
             {
                 string statusText = status switch
@@ -310,13 +369,47 @@ public partial class MainWindow : Window
 
                 OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(info)}\nFlexLM Windows Service is {statusText}.";
 
+                if (!isAdmin)
+                {
+                    OutputTextBlock.Text += "\nThis program is not running as administrator. Start and Stop are disabled for Windows Services.";
+                }
+
                 switch (status)
                 {
                     case ServiceControllerStatus.Running:
-                        FlexLmCanStop();
+                        if (isAdmin)
+                        {
+                            FlexLmCanStop();
+                        }
+                        else
+                        {
+                            StartButton.IsEnabled = false;
+                            StopButton.IsEnabled = false;
+                            StatusButton.IsEnabled = true;
+                            _programWasJustLaunched = false;
+                        }
+
+                        // Show seat info if lmstat succeeded.
+                        if (!string.IsNullOrWhiteSpace(capturedLmstatOutput) &&
+                            capturedLmstatOutput.Contains("license server UP (MASTER)") &&
+                            capturedLmstatOutput.Contains("MLM: UP"))
+                        {
+                            OutputLicenseUsageInfo(capturedLmstatOutput, LmLogPath());
+                        }
+
                         break;
                     case ServiceControllerStatus.Stopped:
-                        FlexLmCanStart();
+                        if (isAdmin)
+                        {
+                            FlexLmCanStart();
+                        }
+                        else
+                        {
+                            StartButton.IsEnabled = false;
+                            StopButton.IsEnabled = false;
+                            StatusButton.IsEnabled = true;
+                            _programWasJustLaunched = false;
+                        }
                         break;
                     case ServiceControllerStatus.StartPending:
                     case ServiceControllerStatus.StopPending:
@@ -870,6 +963,16 @@ public partial class MainWindow : Window
         WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
         if (serviceInfo != null)
         {
+            if (!IsRunningAsAdministrator())
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ShowErrorWindow("Cannot stop a Windows Service without administrator privileges. Please restart this program as administrator.");
+                    CheckStatus();
+                });
+                return;
+            }
+
             Dispatcher.UIThread.Post(() =>
             {
                 OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStopping Windows Service. Please wait.";
@@ -1011,6 +1114,16 @@ public partial class MainWindow : Window
             WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
             if (serviceInfo != null)
             {
+                if (!IsRunningAsAdministrator())
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        ShowErrorWindow("Cannot start a Windows Service without administrator privileges. Please restart this program as administrator.");
+                        CheckStatus();
+                    });
+                    return;
+                }
+
                 Dispatcher.UIThread.Post(() =>
                 {
                     OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStarting Windows Service. Please wait.";
