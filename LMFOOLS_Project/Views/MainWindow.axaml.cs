@@ -17,6 +17,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using LMFOOLS_Project.ViewModels;
+using System.Management;
 using Microsoft.Win32;
 
 namespace LMFOOLS_Project.Views;
@@ -325,28 +326,12 @@ public partial class MainWindow : Window
             }
             else if (_platform == OSPlatform.Windows)
             {
-                using Process wmicProcess = new();
-                wmicProcess.StartInfo = new ProcessStartInfo
+                using ManagementObjectSearcher searcher = new($"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {pid}");
+                using ManagementObjectCollection results = searcher.Get();
+                foreach (ManagementBaseObject obj in results)
                 {
-                    FileName = "wmic",
-                    Arguments = $"process where \"processid={pid}\" get CommandLine /value",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                wmicProcess.Start();
-                string output = wmicProcess.StandardOutput.ReadToEnd();
-                wmicProcess.WaitForExit();
-                if (wmicProcess.ExitCode == 0)
-                {
-                    foreach (string line in output.Split('\n'))
-                    {
-                        string trimmed = line.Trim();
-                        if (trimmed.StartsWith("CommandLine=", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return trimmed["CommandLine=".Length..];
-                        }
-                    }
+                    string? cmdLine = obj["CommandLine"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(cmdLine)) return cmdLine;
                 }
             }
         }
@@ -537,14 +522,11 @@ public partial class MainWindow : Window
             {
                 string? lmutilPath = null;
                 string? licenseFilePath = null;
-                Dispatcher.UIThread.Post(() =>
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     lmutilPath = LmutilLocationTextBox.Text;
                     licenseFilePath = LicenseFileLocationTextBox.Text;
                 });
-
-                // Small delay to let the UI thread process the above.
-                await Task.Delay(50);
 
                 if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath) &&
                     File.Exists(lmutilPath) && File.Exists(licenseFilePath))
@@ -675,7 +657,7 @@ public partial class MainWindow : Window
         {
             string homePath = Environment.GetEnvironmentVariable("HOME") ?? "/tmp";
             settingsPath = Path.Combine(homePath, ".config", "Jestzer.Programs", "LMFOOLS", "settings-lmfools.json");
-            lmLogPath = Path.Combine(homePath, ".config", "Jestzer.Programs", "LMFOOLS", "lmlog.txt"); ;
+            lmLogPath = Path.Combine(homePath, ".config", "Jestzer.Programs", "LMFOOLS", "lmlog.txt");
         }
         else
         {
@@ -699,17 +681,11 @@ public partial class MainWindow : Window
         return (settingsPath, lmLogPath);
     }
 
-    private static string SettingsPath()
-    {
-        var (settingsPath, _) = DeterminePaths();
-        return settingsPath;
-    }
+    private static readonly Lazy<(string settingsPath, string lmLogPath)> CachedPaths = new(DeterminePaths);
 
-    private static string LmLogPath()
-    {
-        var (_, lmLogPath) = DeterminePaths();
-        return lmLogPath;
-    }
+    private static string SettingsPath() => CachedPaths.Value.settingsPath;
+
+    private static string LmLogPath() => CachedPaths.Value.lmLogPath;
 
     private static void SaveSettings(Settings settings)
     {
@@ -922,30 +898,26 @@ public partial class MainWindow : Window
                     var selectedFile = result[0];
                     if (selectedFile != null)
                     {
-                        // Read the file contents.
-                        string fileContents;
-                        using (var stream = await selectedFile.OpenReadAsync())
-                        using (var reader = new StreamReader(stream))
+                        // Check the file size.
+                        var properties = await selectedFile.GetBasicPropertiesAsync();
+                        if (properties.Size != null)
                         {
-                            fileContents = await reader.ReadToEndAsync();
-                        }
+                            long fileSizeInBytes = (long)properties.Size;
+                            const long fourMegabytes = 4L * 1024L * 1024L;
 
-                        // Check the file size indirectly via its content length.
-                        long fileSizeInBytes = fileContents.Length;
-                        const long twoMegabytes = 4L * 1024L * 1024L;
+                            if (fileSizeInBytes > fourMegabytes)
+                            {
+                                ShowErrorWindow("Error: the selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
 
-                        if (fileSizeInBytes > twoMegabytes)
-                        {
-                            ShowErrorWindow("Error: the selected file is over 4 MB, which is unexpectedly large for lmgrd. I will assume is this not lmgrd.");
-                            LmgrdLocationTextBox.Text = string.Empty;
-                            return;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(fileContents))
-                        {
-                            ShowErrorWindow("Error: there is an issue with lmgrd: it is either empty or is read-only.");
-                            LmgrdLocationTextBox.Text = string.Empty;
-                            return;
+                            if (fileSizeInBytes == 0)
+                            {
+                                ShowErrorWindow("Error: there is an issue with lmgrd: it appears to be empty.");
+                                LmgrdLocationTextBox.Text = string.Empty;
+                                return;
+                            }
                         }
 
                         // Gotta convert some things, ya know?
@@ -1010,30 +982,26 @@ public partial class MainWindow : Window
                     var selectedFile = result[0];
                     if (selectedFile != null)
                     {
-                        // Read the file contents.
-                        string fileContents;
-                        using (var stream = await selectedFile.OpenReadAsync())
-                        using (var reader = new StreamReader(stream))
+                        // Check the file size.
+                        var properties = await selectedFile.GetBasicPropertiesAsync();
+                        if (properties.Size != null)
                         {
-                            fileContents = await reader.ReadToEndAsync();
-                        }
+                            long fileSizeInBytes = (long)properties.Size;
+                            const long fourMegabytes = 4L * 1024L * 1024L;
 
-                        // Check the file size indirectly via its content length.
-                        long fileSizeInBytes = fileContents.Length;
-                        const long twoMegabytes = 4L * 1024L * 1024L;
+                            if (fileSizeInBytes > fourMegabytes)
+                            {
+                                ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
+                                LmutilLocationTextBox.Text = string.Empty;
+                                return;
+                            }
 
-                        if (fileSizeInBytes > twoMegabytes)
-                        {
-                            ShowErrorWindow("The selected file is over 4 MB, which is unexpectedly large for lmutil. I will assume is this not lmutil.");
-                            LmutilLocationTextBox.Text = string.Empty;
-                            return;
-                        }
-
-                        if (string.IsNullOrWhiteSpace(fileContents))
-                        {
-                            ShowErrorWindow("There is an issue with lmutil: it is either empty or is read-only.");
-                            LmutilLocationTextBox.Text = string.Empty;
-                            return;
+                            if (fileSizeInBytes == 0)
+                            {
+                                ShowErrorWindow("There is an issue with lmutil: it appears to be empty.");
+                                LmutilLocationTextBox.Text = string.Empty;
+                                return;
+                            }
                         }
 
                         // Gotta convert some things, ya know?
@@ -1045,13 +1013,13 @@ public partial class MainWindow : Window
                             if (filePath.EndsWith("lmgrd") || filePath.EndsWith("lmgrd.exe"))
                             {
                                 ShowErrorWindow("Error: you selected lmgrd instead of lmutil.");
-                                LmgrdLocationTextBox.Text = string.Empty;
+                                LmutilLocationTextBox.Text = string.Empty;
                                 return;
                             }
                             else if (!filePath.EndsWith("lmutil") && !filePath.EndsWith("lmutil.exe"))
                             {
                                 ShowErrorWindow("Error: you selected a file other than lmutil.");
-                                LmgrdLocationTextBox.Text = string.Empty;
+                                LmutilLocationTextBox.Text = string.Empty;
                                 return;
                             }
                         }
@@ -1223,14 +1191,14 @@ public partial class MainWindow : Window
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
-            Dispatcher.UIThread.Post(BusyWithFlexLm);
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-            Dispatcher.UIThread.Post(BusyWithFlexLm);
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
@@ -1256,9 +1224,10 @@ public partial class MainWindow : Window
             using Process process = new() { StartInfo = startInfo };
             process.Start();
 
-            // Read the output and error streams for debugging.
+            // Read both streams concurrently to avoid deadlocks.
+            Task<string> stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
             string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
+            string error = stderrTask.Result;
 
             process.WaitForExit();
 
@@ -1374,36 +1343,28 @@ public partial class MainWindow : Window
             if (!File.Exists(lmgrdPath))
             {
                 Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmgrd was not found at the specified path: {lmgrdPath}"));
-                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                Dispatcher.UIThread.Post(FlexLmStatusUnknown);
                 return;
             }
 
             if (!File.Exists(licenseFilePath))
             {
                 Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                Dispatcher.UIThread.Post(FlexLmStatusUnknown);
                 return;
             }
 
             if (!File.Exists(lmutilPath))
             {
                 Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
-                Dispatcher.UIThread.Post(BusyWithFlexLm);
+                Dispatcher.UIThread.Post(FlexLmStatusUnknown);
                 return;
             }
 
-            string arguments;
             string lmLogPath = LmLogPath();
 
             // Arguments for lmgrd.
-            if (_platform == OSPlatform.Windows)
-            {
-                arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
-            }
-            else
-            {
-                arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
-            }
+            string arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
 
             // Execute the full command!
             try
@@ -1425,9 +1386,10 @@ public partial class MainWindow : Window
                 // Start reading the output and error streams asynchronously as part of preventing hanging.
                 Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
                 Task<string> errorTask = process.StandardError.ReadToEndAsync();
-                Task collectDebugInfo = await Task.WhenAny(Task.WhenAll(outputTask, errorTask), Task.Delay(3000));
+                Task allReads = Task.WhenAll(outputTask, errorTask);
+                Task completedTask = await Task.WhenAny(allReads, Task.Delay(3000));
 
-                if (collectDebugInfo == outputTask)
+                if (completedTask == allReads)
                 {
                     var output = await outputTask;
                     var error = await errorTask;
@@ -1556,14 +1518,14 @@ public partial class MainWindow : Window
         if (!File.Exists(lmutilPath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"lmutil was not found at the specified path: {lmutilPath}"));
-            Dispatcher.UIThread.Post(BusyWithFlexLm);
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
         if (!File.Exists(licenseFilePath))
         {
             Dispatcher.UIThread.Post(() => ShowErrorWindow($"The license file was not found at the specified path: {licenseFilePath}"));
-            Dispatcher.UIThread.Post(BusyWithFlexLm);
+            Dispatcher.UIThread.Post(FlexLmStatusUnknown);
             return;
         }
 
@@ -1586,11 +1548,14 @@ public partial class MainWindow : Window
             using Process process = new() { StartInfo = startInfo };
             process.Start();
 
-            // Read the output and error streams for debugging.
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
+            // Read both streams concurrently to avoid deadlocks.
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            await Task.WhenAll(outputTask, errorTask);
+            string output = outputTask.Result;
+            string error = errorTask.Result;
 
-            process.WaitForExit();
+            await process.WaitForExitAsync();
 
             // Try to read the log file for detailed error analysis. If it's unavailable, lmstat output is still analyzed.
             string[] lines = [];
