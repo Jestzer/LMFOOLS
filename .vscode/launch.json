@@ -1,7 +1,16 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": []
+    "configurations": [
+        {
+            "name": "LMFOOLS (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/LMFOOLS_Project.Desktop/bin/Debug/net8.0/linux-x64/LMFOOLS",
+            "args": [],
+            "cwd": "${workspaceFolder}/LMFOOLS_Project.Desktop",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
 }
