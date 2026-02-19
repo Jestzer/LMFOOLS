@@ -19,6 +19,7 @@ public partial class ServiceSetupWindow : Window
     public ServiceSetupWindow(OSPlatform platform, string lmgrdPath, string licensePath, string lmLogPath, string? savedServiceName)
     {
         InitializeComponent();
+        DpiScaling.Apply(this);
         _platform = platform;
         _lmgrdPath = lmgrdPath;
         _licensePath = licensePath;

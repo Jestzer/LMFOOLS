@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        DpiScaling.Apply(this);
+
         // Bar unsupported platforms.
         if (_platform == OSPlatform.FreeBSD || _platform == OSPlatform.Create("UNKNOWN"))
         {
@@ -1280,7 +1282,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowErrorWindow("There was error when attempting to save your settings: " + ex.Message);
+            Console.Error.WriteLine("Failed to save settings: " + ex.Message);
         }
     }
 
@@ -2117,40 +2119,12 @@ public partial class MainWindow : Window
                 {
                     FileName = lmgrdPath,
                     Arguments = arguments,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
 
                 using Process process = new() { StartInfo = startInfo };
                 process.Start();
-
-                // Prevent hanging. Timeout after 3 seconds.
-                // Start reading the output and error streams asynchronously as part of preventing hanging.
-                Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-                Task<string> errorTask = process.StandardError.ReadToEndAsync();
-                Task allReads = Task.WhenAll(outputTask, errorTask);
-                Task completedTask = await Task.WhenAny(allReads, Task.Delay(3000));
-
-                if (completedTask == allReads)
-                {
-                    var output = await outputTask;
-                    var error = await errorTask;
-
-                    if (process.ExitCode == 0)
-                    {
-                        Console.WriteLine(output);
-                    }
-                    else
-                    {
-                        Console.WriteLine(error);
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("Getting startup output timed out to prevent hanging.");
-                }
             }
             catch (Exception ex)
             {
@@ -2240,7 +2214,9 @@ public partial class MainWindow : Window
             OutputTextBlock.Text = "Loading. Please wait.";
 
             // Hopefully increasing this to 1500 will reduce status error -16s.
-            await Task.Delay(1500);
+            // Skip the delay on initial startup since lmgrd is already running.
+            if (!_programWasJustLaunched)
+                await Task.Delay(1500);
 
             string? lmutilPath = LmutilLocationTextBox.Text;
             string? licenseFilePath = LicenseFileLocationTextBox.Text;

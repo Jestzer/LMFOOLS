@@ -11,6 +11,7 @@ public partial class UpdateWindow : Window
     public UpdateWindow()
     {
         InitializeComponent();
+        DpiScaling.Apply(this);
         this.Opened += UpdateWindow_Opened; // This will allow the window to open before checking for updates has finished.
     }
 
