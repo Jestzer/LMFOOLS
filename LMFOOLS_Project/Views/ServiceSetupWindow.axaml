@@ -1,0 +1,133 @@
+<Window xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    x:Class="LMFOOLS_Project.Views.ServiceSetupWindow"
+    Title="Service Setup"
+    Width="550" Height="450"
+    MinWidth="550" MinHeight="450"
+    CanResize="False"
+    Background="#FF2D2B2B"
+    WindowStartupLocation="CenterOwner"
+    Icon="/Assets/icon.ico">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Service Name -->
+        <TextBlock Grid.Row="0" Text="Service name" Foreground="White" Margin="0,0,0,4"/>
+        <TextBox Name="ServiceNameTextBox" Grid.Row="1"
+            Background="#FF464646" Foreground="White"
+            Watermark="e.g. lmgrd-flexlm"
+            Margin="0,0,0,10"/>
+
+        <!-- lmgrd path (read-only) -->
+        <TextBlock Grid.Row="2" Text="lmgrd path (from main window)" Foreground="White" Margin="0,0,0,4"/>
+        <TextBox Name="LmgrdPathTextBox" Grid.Row="3"
+            Background="#FF3A3A3A" Foreground="#FFAAAAAA"
+            IsReadOnly="True"
+            Margin="0,0,0,10"/>
+
+        <!-- License file path (read-only) -->
+        <TextBlock Grid.Row="4" Text="License file path (from main window)" Foreground="White" Margin="0,0,0,4"/>
+        <TextBox Name="LicensePathTextBox" Grid.Row="5"
+            Background="#FF3A3A3A" Foreground="#FFAAAAAA"
+            IsReadOnly="True"
+            Margin="0,0,0,10"/>
+
+        <!-- Start on boot checkbox -->
+        <CheckBox Name="StartOnBootCheckBox" Grid.Row="6"
+            Content="Start on boot"
+            Foreground="White"
+            IsChecked="True"
+            Margin="0,0,0,10"/>
+
+        <!-- Output/status area -->
+        <ScrollViewer Grid.Row="7" VerticalScrollBarVisibility="Auto" Margin="0,0,0,10">
+            <TextBlock Name="StatusTextBlock"
+                TextWrapping="Wrap"
+                Foreground="White"
+                Text="Checking for existing service..."/>
+        </ScrollViewer>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
+            <Button Name="CreateButton"
+                Content="Create Service"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Width="130"
+                Foreground="White"
+                Click="CreateButton_Click">
+                <Button.Styles>
+                    <Style Selector="Button">
+                        <Setter Property="Background" Value="#FF464646"/>
+                        <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                        <Setter Property="TextElement.Foreground" Value="White"/>
+                    </Style>
+                    <Style Selector="Button:pointerover /template/ Button">
+                        <Setter Property="Background" Value="Gray"/>
+                    </Style>
+                    <Style Selector="Button:pressed /template/ Button">
+                        <Setter Property="Background" Value="#FFCECECE"/>
+                    </Style>
+                </Button.Styles>
+            </Button>
+            <Button Name="RemoveButton"
+                Content="Remove Service"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Width="130"
+                Foreground="White"
+                IsEnabled="False"
+                Click="RemoveButton_Click">
+                <Button.Styles>
+                    <Style Selector="Button">
+                        <Setter Property="Background" Value="#FF464646"/>
+                        <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                        <Setter Property="TextElement.Foreground" Value="White"/>
+                    </Style>
+                    <Style Selector="Button:pointerover /template/ Button">
+                        <Setter Property="Background" Value="Gray"/>
+                    </Style>
+                    <Style Selector="Button:pressed /template/ Button">
+                        <Setter Property="Background" Value="#FFCECECE"/>
+                    </Style>
+                </Button.Styles>
+            </Button>
+            <Button Name="CloseButton"
+                Content="Close"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Width="80"
+                Foreground="White"
+                Click="CloseButton_Click">
+                <Button.Styles>
+                    <Style Selector="Button">
+                        <Setter Property="Background" Value="#FF464646"/>
+                        <Setter Property="BorderBrush" Value="#FF1E699B"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                        <Setter Property="TextElement.Foreground" Value="White"/>
+                    </Style>
+                    <Style Selector="Button:pointerover /template/ Button">
+                        <Setter Property="Background" Value="Gray"/>
+                    </Style>
+                    <Style Selector="Button:pressed /template/ Button">
+                        <Setter Property="Background" Value="#FFCECECE"/>
+                    </Style>
+                </Button.Styles>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

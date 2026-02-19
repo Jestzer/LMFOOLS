@@ -86,6 +86,8 @@ public partial class MainWindow : Window
 
     private bool _flexLmIsAlreadyRunning;
     private sealed record WindowsServiceInfo(string ServiceName, string DisplayName, string ImagePath);
+    private sealed record OsServiceInfo(string ServiceName, string DisplayName, string? ImagePath, ServicePlatform Platform);
+    private enum ServicePlatform { Windows, Systemd, Launchd }
 
     // It's bad because it's not a thorough check.
     private void BadFlexLmStatusCheckAndButtonUpdate()
@@ -219,6 +221,173 @@ public partial class MainWindow : Window
         }
     }
 
+    private OsServiceInfo? TryGetLmgrdService(string? lmgrdPath)
+    {
+        if (_platform == OSPlatform.Windows)
+        {
+            WindowsServiceInfo? winInfo = TryGetLmgrdWindowsService(lmgrdPath);
+            if (winInfo != null)
+            {
+                return new OsServiceInfo(winInfo.ServiceName, winInfo.DisplayName, winInfo.ImagePath, ServicePlatform.Windows);
+            }
+        }
+        else if (_platform == OSPlatform.Linux)
+        {
+            return TryGetLmgrdSystemdService(lmgrdPath);
+        }
+        else if (_platform == OSPlatform.OSX)
+        {
+            return TryGetLmgrdLaunchdService(lmgrdPath);
+        }
+
+        return null;
+    }
+
+    private static OsServiceInfo? TryGetLmgrdSystemdService(string? lmgrdPath)
+    {
+        const string systemdDir = "/etc/systemd/system";
+        if (!Directory.Exists(systemdDir)) return null;
+
+        try
+        {
+            string? normalizedLmgrdPath = NormalizePath(lmgrdPath);
+            OsServiceInfo? fallbackMatch = null;
+
+            foreach (string filePath in Directory.GetFiles(systemdDir, "*.service"))
+            {
+                string content = File.ReadAllText(filePath);
+                if (!content.Contains("lmgrd", StringComparison.OrdinalIgnoreCase)) continue;
+
+                string serviceName = Path.GetFileNameWithoutExtension(filePath);
+
+                // Extract ExecStart line to get the image path
+                string? execStart = null;
+                foreach (string line in content.Split('\n'))
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("ExecStart=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        execStart = trimmed.Substring("ExecStart=".Length).Trim();
+                        break;
+                    }
+                }
+
+                // Extract Description for display name
+                string? description = null;
+                foreach (string line in content.Split('\n'))
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("Description=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        description = trimmed.Substring("Description=".Length).Trim();
+                        break;
+                    }
+                }
+
+                string displayName = description ?? serviceName;
+
+                // If we have a specific lmgrd path, check for an exact match
+                if (!string.IsNullOrWhiteSpace(normalizedLmgrdPath) && !string.IsNullOrWhiteSpace(execStart))
+                {
+                    string? execPath = ExtractExecutablePath(execStart);
+                    string? normalizedExecPath = NormalizePath(execPath);
+                    if (!string.IsNullOrWhiteSpace(normalizedExecPath) &&
+                        string.Equals(normalizedExecPath, normalizedLmgrdPath, StringComparison.Ordinal))
+                    {
+                        return new OsServiceInfo(serviceName, displayName, execStart, ServicePlatform.Systemd);
+                    }
+                }
+
+                fallbackMatch ??= new OsServiceInfo(serviceName, displayName, execStart, ServicePlatform.Systemd);
+            }
+
+            return fallbackMatch;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static OsServiceInfo? TryGetLmgrdLaunchdService(string? lmgrdPath)
+    {
+        const string launchdDir = "/Library/LaunchDaemons";
+        if (!Directory.Exists(launchdDir)) return null;
+
+        try
+        {
+            string? normalizedLmgrdPath = NormalizePath(lmgrdPath);
+            OsServiceInfo? fallbackMatch = null;
+
+            foreach (string filePath in Directory.GetFiles(launchdDir, "*.plist"))
+            {
+                string content = File.ReadAllText(filePath);
+                if (!content.Contains("lmgrd", StringComparison.OrdinalIgnoreCase)) continue;
+
+                // The label is typically the filename without extension
+                string label = Path.GetFileNameWithoutExtension(filePath);
+
+                // Try to extract the lmgrd path from ProgramArguments
+                string? executablePath = null;
+                // Simple extraction: find the string element after <key>ProgramArguments</key>
+                // that contains "lmgrd"
+                int progArgsIdx = content.IndexOf("<key>ProgramArguments</key>", StringComparison.OrdinalIgnoreCase);
+                if (progArgsIdx >= 0)
+                {
+                    // Find the first <string> element after <array> that contains lmgrd
+                    int arrayStart = content.IndexOf("<array>", progArgsIdx, StringComparison.OrdinalIgnoreCase);
+                    int arrayEnd = content.IndexOf("</array>", progArgsIdx, StringComparison.OrdinalIgnoreCase);
+                    if (arrayStart >= 0 && arrayEnd > arrayStart)
+                    {
+                        string arrayContent = content.Substring(arrayStart, arrayEnd - arrayStart);
+                        // First <string> element is typically the executable
+                        int firstStringStart = arrayContent.IndexOf("<string>", StringComparison.OrdinalIgnoreCase);
+                        if (firstStringStart >= 0)
+                        {
+                            firstStringStart += "<string>".Length;
+                            int firstStringEnd = arrayContent.IndexOf("</string>", firstStringStart, StringComparison.OrdinalIgnoreCase);
+                            if (firstStringEnd > firstStringStart)
+                            {
+                                executablePath = arrayContent.Substring(firstStringStart, firstStringEnd - firstStringStart).Trim();
+                            }
+                        }
+                    }
+                }
+
+                // If we have a specific lmgrd path, check for an exact match
+                if (!string.IsNullOrWhiteSpace(normalizedLmgrdPath) && !string.IsNullOrWhiteSpace(executablePath))
+                {
+                    string? normalizedExecPath = NormalizePath(executablePath);
+                    if (!string.IsNullOrWhiteSpace(normalizedExecPath) &&
+                        string.Equals(normalizedExecPath, normalizedLmgrdPath, StringComparison.Ordinal))
+                    {
+                        return new OsServiceInfo(label, label, executablePath, ServicePlatform.Launchd);
+                    }
+                }
+
+                fallbackMatch ??= new OsServiceInfo(label, label, executablePath, ServicePlatform.Launchd);
+            }
+
+            return fallbackMatch;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string ServiceDetectedMessage(OsServiceInfo info)
+    {
+        string platformName = info.Platform switch
+        {
+            ServicePlatform.Windows => "Windows Service",
+            ServicePlatform.Systemd => "systemd service",
+            ServicePlatform.Launchd => "launchd service",
+            _ => "service"
+        };
+        return $"Detected {platformName}: {info.DisplayName} (service name: {info.ServiceName}).";
+    }
+
     private static string WindowsServiceDetectedMessage(WindowsServiceInfo info)
     {
         return $"Detected Windows Service: {info.DisplayName} (service name: {info.ServiceName}).";
@@ -345,9 +514,9 @@ public partial class MainWindow : Window
 
     // Tries to detect the actual log file path that lmgrd is using.
     // Returns null if it can't be determined (caller should fall back to LmLogPath()).
-    private string? TryDetectLmgrdLogPath(WindowsServiceInfo? serviceInfo, string? lmgrdPath)
+    private string? TryDetectLmgrdLogPath(OsServiceInfo? serviceInfo, string? lmgrdPath)
     {
-        // 1. If a Windows Service is detected, parse -l from the service's ImagePath.
+        // 1. If a service is detected, parse -l from the service's ImagePath/ExecStart.
         if (serviceInfo != null)
         {
             string? logPath = ParseLogPathFromCommandLine(serviceInfo.ImagePath);
@@ -634,6 +803,387 @@ public partial class MainWindow : Window
             Dispatcher.UIThread.Post(() =>
             {
                 ShowErrorWindow($"An error occurred when attempting to check Windows Service status. Here is the automatic error message: {ex.Message}");
+                FlexLmStatusUnknown();
+            });
+        }
+    }
+
+    private bool TryStartSystemdService(OsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "pkexec",
+                Arguments = $"systemctl start {info.ServiceName}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            Task<string> stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
+            process.StandardOutput.ReadToEnd();
+            string error = stderrTask.Result;
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                errorMessage = !string.IsNullOrWhiteSpace(error) ? error : $"systemctl start exited with code {process.ExitCode}";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private bool TryStopSystemdService(OsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "pkexec",
+                Arguments = $"systemctl stop {info.ServiceName}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            Task<string> stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
+            process.StandardOutput.ReadToEnd();
+            string error = stderrTask.Result;
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                errorMessage = !string.IsNullOrWhiteSpace(error) ? error : $"systemctl stop exited with code {process.ExitCode}";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private bool TryStartLaunchdService(OsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            string script = $"do shell script \"launchctl load -w /Library/LaunchDaemons/{info.ServiceName}.plist\" with administrator privileges";
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "osascript",
+                Arguments = $"-e '{script}'",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            Task<string> stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
+            process.StandardOutput.ReadToEnd();
+            string error = stderrTask.Result;
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                errorMessage = !string.IsNullOrWhiteSpace(error) ? error : $"launchctl load exited with code {process.ExitCode}";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private bool TryStopLaunchdService(OsServiceInfo info, out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            string script = $"do shell script \"launchctl unload /Library/LaunchDaemons/{info.ServiceName}.plist\" with administrator privileges";
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "osascript",
+                Arguments = $"-e '{script}'",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            Task<string> stderrTask = Task.Run(() => process.StandardError.ReadToEnd());
+            process.StandardOutput.ReadToEnd();
+            string error = stderrTask.Result;
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                errorMessage = !string.IsNullOrWhiteSpace(error) ? error : $"launchctl unload exited with code {process.ExitCode}";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
+
+    private async void ExecuteSystemdServiceStatus(OsServiceInfo info, string lmLogPath)
+    {
+        try
+        {
+            // Check if the service is active
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "systemctl",
+                Arguments = $"is-active {info.ServiceName}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            string output = (await process.StandardOutput.ReadToEndAsync()).Trim();
+            await process.WaitForExitAsync();
+
+            bool isRunning = string.Equals(output, "active", StringComparison.OrdinalIgnoreCase);
+
+            // If running, try to get seat info via lmstat
+            string? lmstatOutput = null;
+            if (isRunning)
+            {
+                string? lmutilPath = null;
+                string? licenseFilePath = null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    lmutilPath = LmutilLocationTextBox.Text;
+                    licenseFilePath = LicenseFileLocationTextBox.Text;
+                });
+
+                if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath) &&
+                    File.Exists(lmutilPath) && File.Exists(licenseFilePath))
+                {
+                    try
+                    {
+                        ProcessStartInfo lmstatInfo = new()
+                        {
+                            FileName = lmutilPath,
+                            Arguments = $"lmstat -c \"{licenseFilePath}\" -a",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+
+                        using Process lmstatProcess = new() { StartInfo = lmstatInfo };
+                        lmstatProcess.Start();
+                        lmstatOutput = await lmstatProcess.StandardOutput.ReadToEndAsync();
+                        await lmstatProcess.WaitForExitAsync();
+
+                        if (lmstatProcess.ExitCode != 0) lmstatOutput = null;
+                    }
+                    catch
+                    {
+                        lmstatOutput = null;
+                    }
+                }
+            }
+
+            string capturedLmstatOutput = lmstatOutput ?? "";
+            Dispatcher.UIThread.Post(() =>
+            {
+                string statusText = isRunning ? "running" : output; // output could be "inactive", "failed", etc.
+                OutputTextBlock.Text = $"{ServiceDetectedMessage(info)}\nsystemd service is {statusText}.";
+
+                if (isRunning)
+                {
+                    FlexLmCanStop();
+
+                    if (!string.IsNullOrWhiteSpace(capturedLmstatOutput) &&
+                        capturedLmstatOutput.Contains("license server UP (MASTER)") &&
+                        capturedLmstatOutput.Contains("MLM: UP"))
+                    {
+                        OutputLicenseUsageInfo(capturedLmstatOutput, lmLogPath);
+                    }
+                }
+                else
+                {
+                    FlexLmCanStart();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ShowErrorWindow($"An error occurred when checking systemd service status: {ex.Message}");
+                FlexLmStatusUnknown();
+            });
+        }
+    }
+
+    private async void ExecuteLaunchdServiceStatus(OsServiceInfo info, string lmLogPath)
+    {
+        try
+        {
+            // Check if the service is loaded and running
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = "launchctl",
+                Arguments = $"list {info.ServiceName}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using Process process = new() { StartInfo = startInfo };
+            process.Start();
+            string output = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            // launchctl list <label> returns exit code 0 if the service is loaded
+            bool isLoaded = process.ExitCode == 0;
+
+            // Check if the process is actually running by looking for a PID in the output
+            bool isRunning = false;
+            if (isLoaded)
+            {
+                // launchctl list output has lines like: "PID" = <number>;
+                // or in table format: PID\tStatus\tLabel
+                foreach (string line in output.Split('\n'))
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("\"PID\"", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("PID", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // If it contains a number after PID, it's running
+                        if (trimmed.Contains("="))
+                        {
+                            string value = trimmed.Split('=').Last().Trim().TrimEnd(';').Trim();
+                            isRunning = int.TryParse(value, out int pid) && pid > 0;
+                        }
+                        break;
+                    }
+                }
+
+                // Alternative: check if lmgrd process is actually running
+                if (!isRunning)
+                {
+                    try
+                    {
+                        Process[] lmgrdProcesses = Process.GetProcessesByName("lmgrd");
+                        isRunning = lmgrdProcesses.Length > 0;
+                        foreach (Process p in lmgrdProcesses) p.Dispose();
+                    }
+                    catch
+                    {
+                        // Ignore
+                    }
+                }
+            }
+
+            // If running, try to get seat info via lmstat
+            string? lmstatOutput = null;
+            if (isRunning)
+            {
+                string? lmutilPath = null;
+                string? licenseFilePath = null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    lmutilPath = LmutilLocationTextBox.Text;
+                    licenseFilePath = LicenseFileLocationTextBox.Text;
+                });
+
+                if (!string.IsNullOrWhiteSpace(lmutilPath) && !string.IsNullOrWhiteSpace(licenseFilePath) &&
+                    File.Exists(lmutilPath) && File.Exists(licenseFilePath))
+                {
+                    try
+                    {
+                        ProcessStartInfo lmstatInfo = new()
+                        {
+                            FileName = lmutilPath,
+                            Arguments = $"lmstat -c \"{licenseFilePath}\" -a",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+
+                        using Process lmstatProcess = new() { StartInfo = lmstatInfo };
+                        lmstatProcess.Start();
+                        lmstatOutput = await lmstatProcess.StandardOutput.ReadToEndAsync();
+                        await lmstatProcess.WaitForExitAsync();
+
+                        if (lmstatProcess.ExitCode != 0) lmstatOutput = null;
+                    }
+                    catch
+                    {
+                        lmstatOutput = null;
+                    }
+                }
+            }
+
+            string capturedLmstatOutput = lmstatOutput ?? "";
+            Dispatcher.UIThread.Post(() =>
+            {
+                string statusText = isRunning ? "running" : (isLoaded ? "loaded but not running" : "not loaded");
+                OutputTextBlock.Text = $"{ServiceDetectedMessage(info)}\nlaunchd service is {statusText}.";
+
+                if (isRunning)
+                {
+                    FlexLmCanStop();
+
+                    if (!string.IsNullOrWhiteSpace(capturedLmstatOutput) &&
+                        capturedLmstatOutput.Contains("license server UP (MASTER)") &&
+                        capturedLmstatOutput.Contains("MLM: UP"))
+                    {
+                        OutputLicenseUsageInfo(capturedLmstatOutput, lmLogPath);
+                    }
+                }
+                else
+                {
+                    FlexLmCanStart();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ShowErrorWindow($"An error occurred when checking launchd service status: {ex.Message}");
                 FlexLmStatusUnknown();
             });
         }
@@ -1306,10 +1856,10 @@ public partial class MainWindow : Window
 
     private void ExecuteStopCommand(string lmutilPath, string licenseFilePath, string? lmgrdPath)
     {
-        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+        OsServiceInfo? serviceInfo = TryGetLmgrdService(lmgrdPath);
         if (serviceInfo != null)
         {
-            if (!IsRunningAsAdministrator())
+            if (serviceInfo.Platform == ServicePlatform.Windows && !IsRunningAsAdministrator())
             {
                 Dispatcher.UIThread.Post(() =>
                 {
@@ -1321,10 +1871,30 @@ public partial class MainWindow : Window
 
             Dispatcher.UIThread.Post(() =>
             {
-                OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStopping Windows Service. Please wait.";
+                OutputTextBlock.Text = $"{ServiceDetectedMessage(serviceInfo)}\nStopping service. Please wait.";
             });
 
-            if (TryStopWindowsService(serviceInfo, out string? errorMessage))
+            bool success;
+            string? errorMessage;
+            switch (serviceInfo.Platform)
+            {
+                case ServicePlatform.Windows:
+                    WindowsServiceInfo winInfo = new(serviceInfo.ServiceName, serviceInfo.DisplayName, serviceInfo.ImagePath ?? "");
+                    success = TryStopWindowsService(winInfo, out errorMessage);
+                    break;
+                case ServicePlatform.Systemd:
+                    success = TryStopSystemdService(serviceInfo, out errorMessage);
+                    break;
+                case ServicePlatform.Launchd:
+                    success = TryStopLaunchdService(serviceInfo, out errorMessage);
+                    break;
+                default:
+                    success = false;
+                    errorMessage = "Unknown service platform.";
+                    break;
+            }
+
+            if (success)
             {
                 Dispatcher.UIThread.Post(CheckStatus);
             }
@@ -1332,7 +1902,7 @@ public partial class MainWindow : Window
             {
                 Dispatcher.UIThread.Post(() =>
                 {
-                    ShowErrorWindow($"Failed to stop Windows Service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
+                    ShowErrorWindow($"Failed to stop service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
                     FlexLmStatusUnknown();
                 });
             }
@@ -1458,10 +2028,10 @@ public partial class MainWindow : Window
             // Setup file paths to executables.
             if (string.IsNullOrWhiteSpace(lmgrdPath) || string.IsNullOrWhiteSpace(licenseFilePath)) return;
 
-            WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+            OsServiceInfo? serviceInfo = TryGetLmgrdService(lmgrdPath);
             if (serviceInfo != null)
             {
-                if (!IsRunningAsAdministrator())
+                if (serviceInfo.Platform == ServicePlatform.Windows && !IsRunningAsAdministrator())
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -1473,10 +2043,30 @@ public partial class MainWindow : Window
 
                 Dispatcher.UIThread.Post(() =>
                 {
-                    OutputTextBlock.Text = $"{WindowsServiceDetectedMessage(serviceInfo)}\nStarting Windows Service. Please wait.";
+                    OutputTextBlock.Text = $"{ServiceDetectedMessage(serviceInfo)}\nStarting service. Please wait.";
                 });
 
-                if (TryStartWindowsService(serviceInfo, out string? errorMessage))
+                bool success;
+                string? errorMessage;
+                switch (serviceInfo.Platform)
+                {
+                    case ServicePlatform.Windows:
+                        WindowsServiceInfo winInfo = new(serviceInfo.ServiceName, serviceInfo.DisplayName, serviceInfo.ImagePath ?? "");
+                        success = TryStartWindowsService(winInfo, out errorMessage);
+                        break;
+                    case ServicePlatform.Systemd:
+                        success = TryStartSystemdService(serviceInfo, out errorMessage);
+                        break;
+                    case ServicePlatform.Launchd:
+                        success = TryStartLaunchdService(serviceInfo, out errorMessage);
+                        break;
+                    default:
+                        success = false;
+                        errorMessage = "Unknown service platform.";
+                        break;
+                }
+
+                if (success)
                 {
                     Dispatcher.UIThread.Post(CheckStatus);
                 }
@@ -1484,7 +2074,7 @@ public partial class MainWindow : Window
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
-                        ShowErrorWindow($"Failed to start Windows Service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
+                        ShowErrorWindow($"Failed to start service \"{serviceInfo.DisplayName}\" ({serviceInfo.ServiceName}). {errorMessage}");
                         FlexLmStatusUnknown();
                     });
                 }
@@ -1602,7 +2192,7 @@ public partial class MainWindow : Window
     {
         // Try to detect the actual log file lmgrd is using.
         string? lmgrdPath = LmgrdLocationTextBox.Text;
-        WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+        OsServiceInfo? serviceInfo = TryGetLmgrdService(lmgrdPath);
         string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo, lmgrdPath));
         string lmLogPath = detectedLogPath ?? LmLogPath();
 
@@ -1623,6 +2213,26 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ServiceSetupButton_Click(object sender, RoutedEventArgs e)
+    {
+        string lmgrdPath = LmgrdLocationTextBox.Text ?? "";
+        string licensePath = LicenseFileLocationTextBox.Text ?? "";
+        string lmLogPath = LmLogPath();
+
+        Settings settings = LoadSettings();
+        ServiceSetupWindow serviceSetupWindow = new(_platform, lmgrdPath, licensePath, lmLogPath, settings.ServiceName);
+        await serviceSetupWindow.ShowDialog(this);
+
+        // Save the service name the user entered
+        string enteredName = serviceSetupWindow.EnteredServiceName;
+        if (!string.IsNullOrWhiteSpace(enteredName))
+        {
+            settings = LoadSettings();
+            settings.ServiceName = enteredName;
+            SaveSettings(settings);
+        }
+    }
+
     private async void CheckStatus()
     {
         try
@@ -1640,7 +2250,7 @@ public partial class MainWindow : Window
                 BusyWithFlexLm();
 
                 string? lmgrdPath = LmgrdLocationTextBox.Text;
-                WindowsServiceInfo? serviceInfo = TryGetLmgrdWindowsService(lmgrdPath);
+                OsServiceInfo? serviceInfo = TryGetLmgrdService(lmgrdPath);
 
                 // Try to detect the actual log file path lmgrd is using.
                 string? detectedLogPath = await Task.Run(() => TryDetectLmgrdLogPath(serviceInfo, lmgrdPath));
@@ -1648,7 +2258,19 @@ public partial class MainWindow : Window
 
                 if (serviceInfo != null)
                 {
-                    await Task.Run(() => ExecuteWindowsServiceStatus(serviceInfo, lmLogPath));
+                    switch (serviceInfo.Platform)
+                    {
+                        case ServicePlatform.Windows:
+                            WindowsServiceInfo winInfo = new(serviceInfo.ServiceName, serviceInfo.DisplayName, serviceInfo.ImagePath ?? "");
+                            await Task.Run(() => ExecuteWindowsServiceStatus(winInfo, lmLogPath));
+                            break;
+                        case ServicePlatform.Systemd:
+                            await Task.Run(() => ExecuteSystemdServiceStatus(serviceInfo, lmLogPath));
+                            break;
+                        case ServicePlatform.Launchd:
+                            await Task.Run(() => ExecuteLaunchdServiceStatus(serviceInfo, lmLogPath));
+                            break;
+                    }
                 }
                 else
                 {
