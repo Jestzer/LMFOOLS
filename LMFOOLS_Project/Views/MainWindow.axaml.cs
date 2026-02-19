@@ -1041,6 +1041,134 @@ public partial class MainWindow : Window
 
     private bool _stopButtonWasJustUsed;
 
+    // Parses the TCP port(s) from the license file's SERVER and DAEMON lines.
+    private static List<int> ParsePortsFromLicenseFile(string? licenseFilePath)
+    {
+        List<int> ports = [];
+        const int defaultServerPort = 27000;
+
+        if (string.IsNullOrWhiteSpace(licenseFilePath) || !File.Exists(licenseFilePath))
+        {
+            ports.Add(defaultServerPort);
+            return ports;
+        }
+
+        try
+        {
+            bool foundServerPort = false;
+
+            foreach (string line in File.ReadLines(licenseFilePath))
+            {
+                string trimmed = line.Trim();
+
+                // SERVER hostname hostid [port]
+                if (trimmed.StartsWith("SERVER", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length >= 4 && int.TryParse(parts[3], out int port))
+                    {
+                        ports.Add(port);
+                        foundServerPort = true;
+                    }
+                }
+                // DAEMON MLM /path/to/MLM [port=XXXX]
+                else if (trimmed.StartsWith("DAEMON", StringComparison.OrdinalIgnoreCase) ||
+                         trimmed.StartsWith("VENDOR", StringComparison.OrdinalIgnoreCase))
+                {
+                    Match portMatch = Regex.Match(trimmed, @"port=(\d+)", RegexOptions.IgnoreCase);
+                    if (portMatch.Success && int.TryParse(portMatch.Groups[1].Value, out int daemonPort))
+                    {
+                        ports.Add(daemonPort);
+                    }
+                }
+            }
+
+            if (!foundServerPort)
+            {
+                ports.Insert(0, defaultServerPort);
+            }
+        }
+        catch
+        {
+            if (ports.Count == 0)
+            {
+                ports.Add(defaultServerPort);
+            }
+        }
+
+        return ports;
+    }
+
+    // Checks if any of the given ports have TCP connections in the TIME_WAIT state.
+    private bool IsAnyPortInTimeWait(List<int> ports)
+    {
+        foreach (int port in ports)
+        {
+            if (IsPortInTimeWait(port)) return true;
+        }
+        return false;
+    }
+
+    private bool IsPortInTimeWait(int port)
+    {
+        try
+        {
+            if (_platform == OSPlatform.Linux)
+            {
+                using Process process = new();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "ss",
+                    Arguments = $"-tan state time-wait sport = :{port}",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                // ss outputs a header line followed by data lines. If there's more than just the header, the port is in TIME_WAIT.
+                string[] lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                return lines.Length > 1;
+            }
+            else if (_platform == OSPlatform.OSX)
+            {
+                using Process process = new();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "netstat",
+                    Arguments = "-an -p tcp",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                process.Start();
+                string output = process.StandardOutput.ReadToEnd();
+                process.WaitForExit();
+
+                // macOS netstat format: tcp4  0  0  *.27000  *.*  TIME_WAIT
+                // Port appears as .PORT before whitespace.
+                string portPattern = $"\\.{port}\\s";
+                foreach (string line in output.Split('\n'))
+                {
+                    if (line.Contains("TIME_WAIT", StringComparison.OrdinalIgnoreCase) &&
+                        Regex.IsMatch(line, portPattern))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
+        catch
+        {
+            // If we can't check (e.g. ss/netstat not available), assume the port is free.
+        }
+
+        return false;
+    }
+
     private async void FlexLmCanStart()
     {
         try
@@ -1051,22 +1179,46 @@ public partial class MainWindow : Window
             {
                 StatusButton.IsEnabled = false;
 
-                // At one point, I tried using a method that detected if the ports were opened, but it was always reporting them as opened after shutting down FlexLM.
-                // netstat commands suggested the same thing: the ports were opened, but FlexLM insisted they weren't, and I had to wait longer.
-                // This suggests that there's no reliable way of telling if FlexLM thinks the ports are opened without actually starting FlexLM. Rather than doing that,
-                // I've elected to just make the user wait. For whatever reason, Unix-based/like platforms seem to take longer than Windows. My guess is that
-                // FlexLM just hates non-Windows users. I mean, they don't even get a shitty GUI to use!
                 if (_platform == OSPlatform.Windows)
                 {
                     Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 5 seconds. This is to ensure FlexLM has fully stopped " +
                                                                            "and the desired TCP ports are opened.");
                     await Task.Delay(5000); // Wait 5 seconds.
                 }
-                else // macOS and Linux seem to take longer. The time below doesn't guarantee anything, but it'll hopefully do the trick most of the time.
+                else
                 {
-                    Dispatcher.UIThread.Post(() => OutputTextBlock.Text += " The start button will be available to use in 60 seconds. This is to better ensure FlexLM has fully stopped " +
-                                                                           "and the desired TCP ports are opened.");
-                    await Task.Delay(60000); // Wait 60 seconds.
+                    // The delay on Linux/macOS is caused by TCP TIME_WAIT (hardcoded to 60s in the Linux kernel). lmgrd cannot rebind
+                    // to a port in TIME_WAIT unless it was started with -reuseaddr. If someone started lmgrd outside this program without
+                    // that flag, we poll for when the port is actually freed rather than using a fixed delay.
+                    string? licenseFilePath = LicenseFileLocationTextBox.Text;
+                    List<int> ports = ParsePortsFromLicenseFile(licenseFilePath);
+                    string portsText = string.Join(", ", ports);
+                    string baseText = OutputTextBlock.Text ?? "";
+
+                    const int maxWaitSeconds = 90;
+                    bool portFreed = false;
+
+                    for (int elapsed = 0; elapsed < maxWaitSeconds; elapsed++)
+                    {
+                        bool stillInTimeWait = await Task.Run(() => IsAnyPortInTimeWait(ports));
+
+                        if (!stillInTimeWait)
+                        {
+                            portFreed = true;
+                            OutputTextBlock.Text = baseText + $" TCP port(s) {portsText} freed.";
+                            break;
+                        }
+
+                        int remaining = maxWaitSeconds - elapsed;
+                        OutputTextBlock.Text = baseText + $" Waiting for TCP port(s) {portsText} to be freed... {remaining}s remaining.";
+
+                        await Task.Delay(1000);
+                    }
+
+                    if (!portFreed)
+                    {
+                        OutputTextBlock.Text = baseText + $" Timed out waiting for TCP port(s) {portsText} to be freed. You may try starting anyway.";
+                    }
                 }
             }
 
@@ -1363,8 +1515,10 @@ public partial class MainWindow : Window
 
             string lmLogPath = LmLogPath();
 
-            // Arguments for lmgrd.
-            string arguments = $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\"";
+            // Arguments for lmgrd. On non-Windows, add -reuseaddr so lmgrd can rebind to a port still in TCP TIME_WAIT.
+            string arguments = _platform == OSPlatform.Windows
+                ? $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\""
+                : $"-c \"{licenseFilePath}\" -l +\"{lmLogPath}\" -reuseaddr";
 
             // Execute the full command!
             try
